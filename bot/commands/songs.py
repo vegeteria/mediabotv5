@@ -112,7 +112,13 @@ paths:
             _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", message, user_id=user_id, user_display=user_display)
             
             from bot.helpers import refresh_jellyfin
-            await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir="Songs")
+            for item in organized_dir.iterdir():
+                if item.is_dir():
+                    await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Songs/{item.name}")
+            
+            # If no dirs were found (e.g. fallback), just refresh Songs
+            if not any(item.is_dir() for item in organized_dir.iterdir()):
+                await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir="Songs")
             
         except Exception as e:
             await status_msg.edit_text(f"❌ Song Download Failed: {e}")

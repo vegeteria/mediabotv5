@@ -139,11 +139,17 @@ async def refresh_jellyfin(telegram_msg=None, target_dir=None):
         logger.info(f"Sending VFS refresh signal to rclone mount... target_dir={target_dir}")
         timeout = aiohttp.ClientTimeout(total=120) # Increased timeout in case of synchronous refresh
         async with aiohttp.ClientSession(timeout=timeout) as session:
+            from bot.config import RCLONE_BASE_DIR
             payload = {"recursive": "true"}
             if target_dir:
-                payload["dir"] = target_dir
+                if RCLONE_BASE_DIR:
+                    payload["dir"] = f"{RCLONE_BASE_DIR}/{target_dir}".strip("/")
+                else:
+                    payload["dir"] = target_dir
                 payload["_async"] = "false" # Synchronously wait for target dir
             else:
+                if RCLONE_BASE_DIR:
+                    payload["dir"] = RCLONE_BASE_DIR
                 payload["_async"] = "true" # Fallback to async for global refresh
                 
             async with session.post("http://localhost:5572/vfs/refresh", json=payload) as rc_resp:
