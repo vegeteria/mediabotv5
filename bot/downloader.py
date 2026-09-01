@@ -423,7 +423,7 @@ class AsyncDownloader:
                 # Fetch recent messages from the User Client's perspective to find the forwarded media
                 # This avoids message ID desyncs between Bot and User Client
                 async for msg in user_app.get_chat_history(bot_me.id, limit=10):
-                    if msg.document or msg.video:
+                    if msg.document or msg.video or msg.audio:
                         # Ensure it's roughly the same time or has a file
                         user_msg = msg
                         target_message_id = msg.id
