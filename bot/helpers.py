@@ -152,7 +152,9 @@ async def refresh_jellyfin(telegram_msg=None, target_dir=None, recursive="true")
                     payload["dir"] = RCLONE_BASE_DIR
                 payload["_async"] = "true" # Fallback to async for global refresh
                 
-            async with session.post("http://localhost:5572/vfs/refresh", json=payload) as rc_resp:
+            import os
+            rclone_rc_url = os.getenv("RCLONE_RC_URL", "http://localhost:5572").rstrip("/")
+            async with session.post(f"{rclone_rc_url}/vfs/refresh", json=payload) as rc_resp:
                 if rc_resp.status == 200:
                     logger.info("Rclone VFS cache refreshed successfully!")
                 else:
