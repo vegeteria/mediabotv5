@@ -75,6 +75,7 @@ async def download_song(client: Client, message: Message):
             # create beets config
             beets_config = target_dir / "config.yaml"
             beets_config_content = f"""
+plugins: fromfilename
 directory: {target_dir}/organized
 library: {target_dir}/library.blb
 import:
