@@ -85,8 +85,8 @@ import:
     quiet_fallback: asis
     singletons: yes
 paths:
-    default: $albumartist/$album/$track - $title
-    singleton: $artist/Non-Album/$title
+    default: %if{$albumartist,$albumartist,%if{$artist,$artist,Unknown Artist}}/%if{$album,$album,Unknown Album}/$track - %if{$title,$title,Unknown Title}
+    singleton: %if{$artist,$artist,Unknown Artist}/Non-Album/%if{$title,$title,Unknown Title}
 """
             with open(beets_config, "w") as f:
                 f.write(beets_config_content)
@@ -105,9 +105,10 @@ paths:
             if not organized_dir.exists() or not any(organized_dir.iterdir()):
                 # Fallback: if beets failed to move it, just upload the original
                 organized_dir = target_dir / "fallback"
-                organized_dir.mkdir(parents=True, exist_ok=True)
+                unknown_artist_dir = organized_dir / "Unknown Artist"
+                unknown_artist_dir.mkdir(parents=True, exist_ok=True)
                 if process_filepath.exists():
-                    shutil.move(str(process_filepath), organized_dir / process_filepath.name)
+                    shutil.move(str(process_filepath), unknown_artist_dir / process_filepath.name)
                 
             directories_to_refresh = []
             if organized_dir.exists():
@@ -116,7 +117,7 @@ paths:
                         directories_to_refresh.append(item.name)
                 
             from bot.uploader import perform_autorclone
-            _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", message, user_id=user_id, user_display=user_display)
+            _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", status_msg, user_id=user_id, user_display=user_display)
             
             from bot.helpers import refresh_jellyfin
             if directories_to_refresh:
