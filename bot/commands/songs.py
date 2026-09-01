@@ -122,10 +122,12 @@ paths:
             
             from bot.helpers import refresh_jellyfin
             if directories_to_refresh:
+                # Refresh parent non-recursively so Rclone discovers the new Artist folders
+                await refresh_jellyfin(telegram_msg=None, target_dir="Songs", recursive="false")
                 for dir_name in directories_to_refresh:
                     await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Songs/{dir_name}")
             else:
-                await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir="Songs")
+                await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir="Songs", recursive="false")
             
         except Exception as e:
             await status_msg.edit_text(f"❌ Song Download Failed: {e}")

@@ -132,15 +132,15 @@ async def _debounced_merger_loop():
             pass
     _merger_msgs.clear()
 
-async def refresh_jellyfin(telegram_msg=None, target_dir=None):
+async def refresh_jellyfin(telegram_msg=None, target_dir=None, recursive="true"):
     """Trigger rclone VFS refresh and Jellyfin library scan."""
     
     try:
-        logger.info(f"Sending VFS refresh signal to rclone mount... target_dir={target_dir}")
+        logger.info(f"Sending VFS refresh signal to rclone mount... target_dir={target_dir}, recursive={recursive}")
         timeout = aiohttp.ClientTimeout(total=120) # Increased timeout in case of synchronous refresh
         async with aiohttp.ClientSession(timeout=timeout) as session:
             from bot.config import RCLONE_BASE_DIR
-            payload = {"recursive": "true"}
+            payload = {"recursive": recursive}
             if target_dir:
                 if RCLONE_BASE_DIR:
                     payload["dir"] = f"{RCLONE_BASE_DIR}/{target_dir}".strip("/")
