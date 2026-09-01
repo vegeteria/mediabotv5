@@ -10,7 +10,7 @@ and starts polling.  All logic lives under bot/.
 import asyncio
 import logging
 from pyrogram import idle
-from bot.config import BOT_TOKEN, API_ID, API_HASH, USER_SESSION_STRING, OWNER_ID, BASE_MOVIES, BASE_SERIES, logger
+from bot.config import BOT_TOKEN, API_ID, API_HASH, USER_SESSION_STRING, OWNER_ID, BASE_MOVIES, BASE_SERIES, BASE_SONGS, logger
 from bot.web_server import start_web_server
 from bot.clients import bot_app as app, user_app
 
@@ -30,6 +30,7 @@ async def main():
     # Ensure base directories exist
     BASE_MOVIES.mkdir(parents=True, exist_ok=True)
     BASE_SERIES.mkdir(parents=True, exist_ok=True)
+    BASE_SONGS.mkdir(parents=True, exist_ok=True)
 
     # Start the web server
     logger.info("Starting web server...")

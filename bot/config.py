@@ -38,6 +38,7 @@ ARCHIVE_EXTRACTION_LIMIT_GB = float(os.getenv("ARCHIVE_EXTRACTION_LIMIT_GB", "15
 data_dir = os.getenv("MEDIA_DIR", str(Path.home() / "server"))
 BASE_MOVIES = Path(data_dir) / "movies"
 BASE_SERIES = Path(data_dir) / "series"
+BASE_SONGS = Path(data_dir) / "songs"
 
 # ── Web Server Configuration ──────────────────────────────────────────────────
 WEB_SERVER_URL = os.getenv("WEB_SERVER_URL", "http://localhost").rstrip("/")

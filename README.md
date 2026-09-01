@@ -122,6 +122,7 @@
 | `/movie <url>` | Authorized | Download a movie (creates folder & uploads to Rclone) |
 | `/episode <url>` | Authorized | Download & auto-route an episode to existing Series |
 | `/series <url>` | Authorized | Download, extract, process, and upload a full series |
+| `/song` | Authorized | Reply to an audio file to download, auto-tag (beets), and upload to Songs |
 | `/mbmovie <search>` | Authorized | Search, download, & upload a movie via Moviebox |
 | `/mbseries <search>` | Authorized | Search, download, & upload a series via Moviebox |
 | `/throttle <1-20>` | Authorized | Set your personal download blocks (1 = Direct) |
@@ -140,6 +141,7 @@ status - View all active bot downloads/uploads
 movie - Download a movie from a direct link
 episode - Download and auto-route an episode
 series - Download, extract, process, and organize a series
+song - Download and auto-tag a song via beets
 mbmovie - Search and download a movie via Moviebox
 mbseries - Search and download a series via Moviebox
 refresh - Manually update Jellyfin media library
