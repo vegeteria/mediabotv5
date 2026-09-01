@@ -380,7 +380,7 @@ class AsyncDownloader:
             
         dest_dir.mkdir(parents=True, exist_ok=True)
         
-        media = message.document or message.video
+        media = message.document or message.video or message.audio
         filename = getattr(media, "file_name", "telegram_download.ext")
         dest_path = dest_dir / filename
         
