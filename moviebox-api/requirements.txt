@@ -1,0 +1,6 @@
+bs4>=0.0.2
+httpx>=0.28.1
+pydantic>=2.11.7
+throttlebuster>=0.1.12
+click>=8.2.1
+rich>=14.1.0

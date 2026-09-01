@@ -1,0 +1,11 @@
+kurigram
+TgCrypto
+aiohttp>=3.9.0
+python-dotenv>=1.0.0
+
+aiofiles>=23.2.1
+throttlebuster>=0.1.12
+cloudscraper>=1.2.71
+curl_cffi>=0.5.9
+lxml>=4.9.3
+requests>=2.31.0

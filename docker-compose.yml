@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  mediabot:
+    build:
+      context: .
+      network: host
+    container_name: mediabot
+    restart: unless-stopped
+    # Load environment variables straight from your host .env file
+    env_file:
+      - .env
+    environment:
+      # Use /data to receive media correctly mapped
+      - MEDIA_DIR=/data
+      - ENV_FILE_PATH=/app/.env
+    volumes:
+      # Map the host .env so the bot can self-update AUTHORIZED_USERS
+      - ./.env:/app/.env
+      # We removed the $USER variable parsing because 'sudo docker' changes the user to 'root', 
+      # forcing movies to download into a hidden /home/root directory.
+      # This explicitly locks the downloads back onto your ubuntu user's main server folder!
+      - /home/ubuntu/server:/data
+      # Persist deep-link pending store across container restarts
+      - ./data:/app/data
+      # Map rclone config so the container can upload to Google Drive
+      - ~/.config/rclone:/root/.config/rclone:ro
+      # Map the host's rclone mount (read-only) for fast cloud fuzzy detection
+      # using 'rshared' propagation so the container automatically detects host remounts!
+      - /mnt/gdrive:/mnt/gdrive:ro,rshared
+    network_mode: host

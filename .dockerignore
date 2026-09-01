@@ -1,0 +1,7 @@
+moviebox-api/**/*.mp4
+moviebox-api/.venv
+moviebox-api/venv
+moviebox-api/test_venv
+.venv
+venv
+data/
