@@ -86,8 +86,8 @@ import:
     quiet_fallback: asis
     singletons: yes
 paths:
-    default: %if{$albumartist,$albumartist,%if{$artist,$artist,Unknown Artist}}/%if{$album,$album,Unknown Album}/$track - %if{$title,$title,Unknown Title}
-    singleton: %if{$artist,$artist,Unknown Artist}/Non-Album/%if{$title,$title,Unknown Title}
+    default: %if{{$albumartist,$albumartist,%if{{$artist,$artist,Unknown Artist}}}}/%if{{$album,$album,Unknown Album}}/$track - %if{{$title,$title,Unknown Title}}
+    singleton: %if{{$artist,$artist,Unknown Artist}}/Non-Album/%if{{$title,$title,Unknown Title}}
 """
             with open(beets_config, "w") as f:
                 f.write(beets_config_content)
