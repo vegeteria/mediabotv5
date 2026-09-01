@@ -82,6 +82,7 @@ import:
     write: yes
     autotag: yes
     quiet: yes
+    quiet_fallback: asis
     singletons: yes
 paths:
     default: $albumartist/$album/$track - $title
@@ -108,16 +109,20 @@ paths:
                 if process_filepath.exists():
                     shutil.move(str(process_filepath), organized_dir / process_filepath.name)
                 
+            directories_to_refresh = []
+            if organized_dir.exists():
+                for item in organized_dir.iterdir():
+                    if item.is_dir():
+                        directories_to_refresh.append(item.name)
+                
             from bot.uploader import perform_autorclone
             _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", message, user_id=user_id, user_display=user_display)
             
             from bot.helpers import refresh_jellyfin
-            for item in organized_dir.iterdir():
-                if item.is_dir():
-                    await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Songs/{item.name}")
-            
-            # If no dirs were found (e.g. fallback), just refresh Songs
-            if not any(item.is_dir() for item in organized_dir.iterdir()):
+            if directories_to_refresh:
+                for dir_name in directories_to_refresh:
+                    await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Songs/{dir_name}")
+            else:
                 await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir="Songs")
             
         except Exception as e:
