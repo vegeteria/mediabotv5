@@ -93,7 +93,7 @@ paths:
                 f.write(beets_config_content)
                 
             # run beets
-            cmd = ["beet", "-c", str(beets_config), "import", "-q", "-S", str(process_filepath)]
+            cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(process_filepath)]
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
