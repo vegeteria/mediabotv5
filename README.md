@@ -43,6 +43,7 @@
    RCLONE_REMOTE=gdrive              # Rclone Remote Name
    RCLONE_BASE_DIR=                  # Optional Base Directory on Remote
    RCLONE_MOUNT_DIR=/mnt/gdrive      # Path to the mounted rclone drive inside the container for fast fuzzy matching
+   RCLONE_RC_URL=http://localhost:5572 # Point to your Remote Server IP if Rclone is hosted elsewhere
    IS_DUPLICATE_ALLOWED=False        # Set to True to disable duplicate download blocking
    INDEX_URL=https://index...        # Your Google Drive Index Worker URL
    CLOUD_LINK_BASE=https://...       # Your Direct Cloud Link Base URL
@@ -82,7 +83,9 @@
      --poll-interval 15s \
      --log-level INFO \
      --log-file /var/log/rclone.log \
-     --rc --rc-no-auth
+     --rc \
+     --rc-addr 0.0.0.0:5572 \
+     --rc-no-auth
    ExecStop=/bin/fusermount -uz /mnt/gdrive
    Restart=on-failure
    User=root

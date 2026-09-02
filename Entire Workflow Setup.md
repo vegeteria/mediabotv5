@@ -92,7 +92,9 @@ To allow Jellyfin to scan your Google Drive media instantly, you need to mount i
      --poll-interval 15s \
      --log-level INFO \
      --log-file /var/log/rclone.log \
-     --rc --rc-no-auth
+     --rc \
+     --rc-addr 0.0.0.0:5572 \
+     --rc-no-auth
    ExecStop=/bin/fusermount -uz /mnt/gdrive
    Restart=on-failure
    User=root
@@ -101,6 +103,9 @@ To allow Jellyfin to scan your Google Drive media instantly, you need to mount i
    [Install]
    WantedBy=multi-user.target
    ```
+
+   **Split-Server Architecture Note:** If your Jellyfin/Rclone mount is running on a *different* server than the bot, exposing `--rc-addr 0.0.0.0:5572` is required so the bot can trigger immediate Jellyfin refreshes. You must also ensure your Cloud provider's firewall allows TCP traffic on port 5572. For Oracle Cloud, bypass default iptables blocks with:
+   `sudo iptables -I INPUT 1 -p tcp --dport 5572 -j ACCEPT`
 
 3. **Enable and Start the Service:**
    ```bash
@@ -155,6 +160,7 @@ Now that everything is ready, create your environment configuration for the bot.
    RCLONE_REMOTE=gdrive
    RCLONE_BASE_DIR=            # Leave blank to upload directly to root, or type a folder name
    RCLONE_MOUNT_DIR=/mnt/gdrive # Mount path for fuzzy duplicate detection
+   RCLONE_RC_URL=http://localhost:5572 # Use remote server IP (http://remote_ip:5572) if Rclone is hosted elsewhere
    IS_DUPLICATE_ALLOWED=False   # Set to True to disable duplicate download blocking
    
    # Indexing URLs
