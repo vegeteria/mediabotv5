@@ -162,6 +162,14 @@ async def refresh_jellyfin(telegram_msg=None, target_dir=None, recursive="true")
                     logger.warning(f"Rclone RC returned status {rc_resp.status}: {error_text}")
     except Exception as e:
         logger.error(f"Could not reach Rclone RC (Is --rc enabled on your host mount?): {e}")
+        logger.info("Rclone RC unreachable. Waiting 65s for natural Google Drive polling before triggering Jellyfin...")
+        if telegram_msg:
+            try:
+                await telegram_msg.edit_text("⏳ **Rclone RC Unreachable**\nWaiting 65s for natural Google Drive polling before pinging Jellyfin...", parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                pass
+        import asyncio
+        await asyncio.sleep(65)
 
     try:
         timeout = aiohttp.ClientTimeout(total=5)
