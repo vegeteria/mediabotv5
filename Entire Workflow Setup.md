@@ -170,6 +170,11 @@ Now that everything is ready, create your environment configuration for the bot.
    # Web Server (Optional)
    WEB_SERVER_URL=http://127.0.0.1
    WEB_SERVER_PORT=8000
+   
+   # MTProto API Credentials (for downloading 2GB+ files)
+   API_ID=your_api_id
+   API_HASH=your_api_hash
+   USER_SESSION_STRING=your_pyrogram_session_string
    ```
 
 ## 6. (Optional) Setting up Caddy for the Web Server UI
