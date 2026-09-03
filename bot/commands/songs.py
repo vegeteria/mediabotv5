@@ -141,8 +141,15 @@ paths:
                 needs_fallback = True
                 
             if needs_fallback:
+                import re
+                clean_name = filepath.stem
+                clean_name = re.sub(r'(?i)\d{2,3}\s*(kbps|mbps)', '', clean_name)
+                clean_name = re.sub(r'(?i)(official|video|audio|lyric|lyrics)', '', clean_name)
+                clean_name = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_name)
+                clean_name = clean_name.strip()
+                
                 # Try Spotify fallback
-                search_query = urllib.parse.quote(filepath.stem)
+                search_query = urllib.parse.quote(clean_name)
                 results = []
                 if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
                     async with aiohttp.ClientSession() as session:
@@ -168,62 +175,66 @@ paths:
                             itunes_data = await resp.json(content_type=None)
                             results = itunes_data.get('results', [])
                 
-                if results:
-                    buttons = []
-                    SONG_SEARCH_CACHE[task_id] = results
-                    for idx, res in enumerate(results):
-                        # Handle both Spotify and iTunes formats
-                        title = res.get('name') or res.get('trackName', 'Unknown')
-                        
-                        if 'artists' in res and res['artists']:
-                            artist = res['artists'][0].get('name', 'Unknown')
-                        else:
-                            artist = res.get('artistName', 'Unknown')
-                        
-                        if 'album' in res:
-                            res['collectionName'] = res['album'].get('name', 'Unknown') # standardize for tagging later
-                        btn_text = f"{title} - {artist}"
-                        if len(btn_text) > 40:
-                            btn_text = btn_text[:37] + "..."
-                        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"songmatch_{task_id}_{idx}")])
-                    buttons.append([InlineKeyboardButton("Skip (Use As-Is)", callback_data=f"songmatch_{task_id}_skip")])
+            buttons = []
+            SONG_SEARCH_CACHE[task_id] = results
+            for idx, res in enumerate(results):
+                # Handle both Spotify and iTunes formats
+                title = res.get('name') or res.get('trackName', 'Unknown')
+                
+                if 'artists' in res and res['artists']:
+                    artist = res['artists'][0].get('name', 'Unknown')
+                else:
+                    artist = res.get('artistName', 'Unknown')
+                
+                if 'album' in res:
+                    res['collectionName'] = res['album'].get('name', 'Unknown') # standardize for tagging later
+                btn_text = f"{title} - {artist}"
+                if len(btn_text) > 40:
+                    btn_text = btn_text[:37] + "..."
+                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"songmatch_{task_id}_{idx}")])
+            
+            buttons.append([InlineKeyboardButton("Skip (Use As-Is)", callback_data=f"songmatch_{task_id}_skip")])
+            
+            header_text = "⚠️ **No automatic match found.**\nDid you mean one of these songs?"
+            if not results:
+                header_text = f"⚠️ **No automatic match found.**\nI couldn't find any results for '{clean_name}'."
+            
+            await status_msg.edit_text(
+                header_text,
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+            
+            SONG_EVENTS[task_id] = asyncio.Event()
+            await SONG_EVENTS[task_id].wait()
+            
+            choice = SONG_CHOICES.get(task_id, "skip")
+            if choice != "skip":
+                idx = int(choice)
+                track_info = SONG_SEARCH_CACHE[task_id][idx]
+                
+                imported_files = list(organized_dir.rglob("*.*"))
+                if imported_files:
+                    moved_file = imported_files[0]
+                    tmp_tagged = target_dir / f"tagged_temp{moved_file.suffix}"
+                    tag_cmd = [
+                        "ffmpeg", "-y", "-i", str(moved_file),
+                        "-metadata", f"title={track_info.get('name', track_info.get('trackName', ''))}",
+                        "-metadata", f"artist={track_info.get('artists', [{'name': track_info.get('artistName', '')}])[0].get('name', '')}",
+                        "-metadata", f"album={track_info.get('album', {}).get('name', track_info.get('collectionName', ''))}",
+                        "-c", "copy", str(tmp_tagged)
+                    ]
+                    proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    await proc.communicate()
                     
-                    await status_msg.edit_text(
-                        "⚠️ **No automatic match found.**\nDid you mean one of these songs?",
-                        reply_markup=InlineKeyboardMarkup(buttons)
-                    )
+                    # Wipe and re-run beets
+                    shutil.rmtree(organized_dir, ignore_errors=True)
+                    (target_dir / "library.blb").unlink(missing_ok=True)
                     
-                    SONG_EVENTS[task_id] = asyncio.Event()
-                    await SONG_EVENTS[task_id].wait()
+                    cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(tmp_tagged)]
+                    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                    await proc.communicate()
                     
-                    choice = SONG_CHOICES.get(task_id, "skip")
-                    if choice != "skip":
-                        idx = int(choice)
-                        track_info = SONG_SEARCH_CACHE[task_id][idx]
-                        
-                        imported_files = list(organized_dir.rglob("*.*"))
-                        if imported_files:
-                            moved_file = imported_files[0]
-                            tmp_tagged = target_dir / f"tagged_temp{moved_file.suffix}"
-                            tag_cmd = [
-                                "ffmpeg", "-y", "-i", str(moved_file),
-                                "-metadata", f"title={track_info.get('name', track_info.get('trackName', ''))}",
-                                "-metadata", f"artist={track_info.get('artists', [{'name': track_info.get('artistName', '')}])[0].get('name', '')}",
-                                "-metadata", f"album={track_info.get('album', {}).get('name', track_info.get('collectionName', ''))}",
-                                "-c", "copy", str(tmp_tagged)
-                            ]
-                            proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                            await proc.communicate()
-                            
-                            # Wipe and re-run beets
-                            shutil.rmtree(organized_dir, ignore_errors=True)
-                            (target_dir / "library.blb").unlink(missing_ok=True)
-                            
-                            cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(tmp_tagged)]
-                            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                            await proc.communicate()
-                            
-                            await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
+                    await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
 
             # after beets, files are in target_dir/organized. Upload that.
             organized_dir = target_dir / "organized"
