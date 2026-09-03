@@ -190,6 +190,7 @@ async def song_match_callback(client: Client, query):
 
 
 
+from bot.auth import require_auth
 from bot.config import BASE_SONGS, logger
 from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register_user_task
 
