@@ -189,14 +189,17 @@ async def song_match_callback(client: Client, query):
         await render_song_detail(query.message, task_id, results, idx, page)
 
 
-
-from bot.auth import require_auth
 from bot.config import BASE_SONGS, logger
 from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register_user_task
 
 @Client.on_message(filters.command("song"))
 @require_auth
+@Client.on_message(filters.command("song"))
+@require_auth
 async def download_song(client: Client, message: Message):
+    if not message.reply_to_message:
+        await message.reply_text("Usage: Reply to an audio/document with `/song`", parse_mode=ParseMode.MARKDOWN)
+        return
     """Handle /song command."""
     user_id = message.from_user.id
     if not check_concurrency_limit(user_id):
@@ -204,221 +207,166 @@ async def download_song(client: Client, message: Message):
         return
 
     register_user_task(user_id, asyncio.current_task())
+    
+    from bot.downloader import AsyncDownloader
+    from bot.state import GLOBAL_TASKS, GlobalTask
+    import shutil
+    
+    task_id = f"song_{message.id}"
+    GLOBAL_TASKS[task_id] = GlobalTask(task_id, "Download Song", user_id)
+    
+    status_msg = None
+    target_dir = BASE_SONGS / task_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    
+    from bot.config import get_base_url
+    dashboard_link = f"{get_base_url()}/dashboard"
 
-    target_msg = None
-    if message.reply_to_message and (message.reply_to_message.document or message.reply_to_message.audio):
-        target_msg = message.reply_to_message
-    elif message.document or message.audio:
-        target_msg = message
-
-    if target_msg:
-        from bot.downloader import AsyncDownloader
-        task_id = __import__("uuid").uuid4().hex[:8]
-        from bot.state import GLOBAL_TASKS, GlobalTask
-        qtask = GlobalTask()
-        qtask.id = task_id
-        qtask.user_id = user_id
-        user_display = message.from_user.username or message.from_user.first_name
-        qtask.user_display = f"@" + user_display if message.from_user.username else str(user_display)
-        qtask.asyncio_task = asyncio.current_task()
-        qtask.chat_id = message.chat.id
-        s_info = f"\n🔗 <b>Type:</b> <code>Song Download</code>"
-        qtask.static_info = s_info
-        GLOBAL_TASKS[task_id] = qtask
-        
-        from bot.config import get_base_url
-        dashboard_link = f"{get_base_url()}/dashboard"
+    try:
+        await task_manager.acquire(client)
         status_msg = await message.reply_text(
-            f"📥 Starting download...\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{task_id}`",
-            parse_mode=ParseMode.MARKDOWN,
-            link_preview_options=LinkPreviewOptions(is_disabled=True)
+            f"📥 Starting download...\n\n🌐 <a href='{dashboard_link}'>Open Dashboard</a> | Task ID: <code>{task_id}</code>",
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
         )
         
-        from bot.state import task_manager
-        await task_manager.acquire(qtask, client)
+        from bot.downloader import ProgressTracker
+        tracker = ProgressTracker(status_msg, "Downloading Audio")
         
-        unorganized_dir = BASE_SONGS / ".unorganized"
-        target_dir = BASE_SONGS / task_id
-        target_dir.mkdir(parents=True, exist_ok=True)
+        from bot.state import update_status_msg
+        filepath = await client.download_media(
+            message,
+            file_name=str(target_dir) + "/",
+            progress=tracker.progress
+        )
         
-        try:
-            from bot.downloader import ProgressTracker
-            tracker = ProgressTracker(status_msg, 0, user_id=user_id, task_id=task_id)
-            filepath = await AsyncDownloader.download_telegram_media(target_msg, unorganized_dir, tracker, user_id=user_id)
+        if not filepath:
+            await status_msg.edit_text("❌ Failed to download file.")
+            return
             
-            # Now we have the filepath, let's process it with beets.
-            from bot.state import update_status_msg
-            await update_status_msg(status_msg, "🎵 Processing song with beets...")
-            qtask.message = f"🎵 <b>Processing with beets</b>\n⏳ Auto-tagging..."
+        process_filepath = Path(filepath)
+        
+        # Clean the filename for searching
+        clean_name = process_filepath.stem
+        clean_name = re.sub(r'(?i)\d{2,3}\s*(kbps|mbps|hz)', '', clean_name)
+        clean_name = re.sub(r'(?i)(official|video|audio|lyric|lyrics)', '', clean_name)
+        clean_name = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_name)
+        clean_name = clean_name.strip()
+        
+        await status_msg.edit_text(f"🔍 Searching Spotify for: <code>{clean_name}</code>...", parse_mode=ParseMode.HTML)
+        
+        search_query = urllib.parse.quote(clean_name)
+        results = []
+        if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
+            async with aiohttp.ClientSession() as session:
+                auth_string = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
+                auth_base64 = str(base64.b64encode(auth_string.encode("utf-8")), "utf-8")
+                async with session.post("https://accounts.spotify.com/api/token",
+                                        headers={"Authorization": f"Basic {auth_base64}", "Content-Type": "application/x-www-form-urlencoded"},
+                                        data="grant_type=client_credentials") as resp:
+                    if resp.status == 200:
+                        token_data = await resp.json()
+                        access_token = token_data.get('access_token')
+                        
+                        async with session.get(f"https://api.spotify.com/v1/search?q={search_query}&type=track&limit=5",
+                                               headers={"Authorization": f"Bearer {access_token}"}) as s_resp:
+                            if s_resp.status == 200:
+                                spotify_data = await s_resp.json()
+                                results = spotify_data.get('tracks', {}).get('items', [])
+        
+        if not results:
+            # Fallback to iTunes if Spotify fails or not configured
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"https://itunes.apple.com/search?term={search_query}&entity=song&limit=5") as resp:
+                    itunes_data = await resp.json(content_type=None)
+                    results = itunes_data.get('results', [])
+        
+        SONG_SEARCH_CACHE[task_id] = results
+        await render_song_page(status_msg, task_id, results, 0, clean_name)
+        
+        SONG_EVENTS[task_id] = asyncio.Event()
+        await SONG_EVENTS[task_id].wait()
+        
+        choice = SONG_CHOICES.get(task_id, "skip")
+        
+        title = process_filepath.stem
+        artist = "Unknown Artist"
+        album = "Unknown Album"
+        cover_url = ""
+        
+        if choice != "skip":
+            idx = int(choice)
+            track_info = SONG_SEARCH_CACHE[task_id][idx]
+            title, artist, album, cover_url, _, _ = get_track_info(track_info)
             
-            # Move file to target_dir so beets works on it there
-            shutil.move(str(filepath), target_dir / filepath.name)
-            process_filepath = target_dir / filepath.name
+        await status_msg.edit_text("⏳ Applying tags and organizing...", parse_mode=ParseMode.HTML)
+        
+        # Sanitize folder names
+        def sanitize_name(name):
+            return re.sub(r'[\\/*?:"<>|]', "", name).strip()
             
-            # create beets config
-            beets_config = target_dir / "config.yaml"
-            beets_config_content = f"""
-plugins: fromfilename chroma
-directory: {target_dir}/organized
-library: {target_dir}/library.blb
-import:
-    move: yes
-    write: yes
-    autotag: yes
-    quiet: yes
-    quiet_fallback: asis
-    singletons: yes
-paths:
-    default: %if{{$albumartist,$albumartist,%if{{$artist,$artist,Unknown Artist}}}}/%if{{$album,$album,Unknown Album}}/$track - %if{{$title,$title,Unknown Title}}
-    singleton: %if{{$albumartist,$albumartist,%if{{$artist,$artist,Unknown Artist}}}}/%if{{$album,$album,Unknown Album}}/$track - %if{{$title,$title,Unknown Title}}
-"""
-            with open(beets_config, "w") as f:
-                f.write(beets_config_content)
+        safe_artist = sanitize_name(artist) or "Unknown Artist"
+        safe_album = sanitize_name(album) or "Unknown Album"
+        safe_title = sanitize_name(title) or "Unknown Title"
+        
+        organized_dir = target_dir / "organized"
+        album_dir = organized_dir / safe_artist / safe_album
+        album_dir.mkdir(parents=True, exist_ok=True)
+        
+        final_filename = f"{safe_title}{process_filepath.suffix}"
+        final_path = album_dir / final_filename
+        
+        # 1. Download cover art if available
+        cover_path = album_dir / "cover.jpg"
+        if cover_url:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(cover_url) as resp:
+                    if resp.status == 200:
+                        with open(cover_path, "wb") as f:
+                            f.write(await resp.read())
+                        shutil.copy(cover_path, album_dir / "folder.jpg")
+        
+        # 2. Apply text tags with ffmpeg
+        tag_cmd = [
+            "ffmpeg", "-y", "-i", str(process_filepath),
+            "-metadata", f"title={title}",
+            "-metadata", f"artist={artist}",
+            "-metadata", f"album={album}",
+            "-c", "copy", str(final_path)
+        ]
+        proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        await proc.communicate()
+        
+        # 3. Embed artwork physically using mutagen if cover exists
+        if cover_path.exists():
+            try:
+                embed_artwork(final_path, cover_path)
+            except Exception as e:
+                logger.error(f"Failed to embed artwork: {e}")
                 
-            # run beets
-            cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(process_filepath)]
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT
-            )
-            stdout, _ = await process.communicate()
-            
-            stdout_str = stdout.decode('utf-8')
-            
-            organized_dir = target_dir / "organized"
-            imported_files = list(organized_dir.rglob("*.*"))
-            
-            needs_fallback = False
-            if imported_files:
-                first_file_path = str(imported_files[0])
-                if "Unknown Artist" in first_file_path or "Unknown Album" in first_file_path:
-                    needs_fallback = True
-            elif "Importing as-is" in stdout_str:
-                needs_fallback = True
-                
-            if needs_fallback:
-                clean_name = filepath.stem
-                clean_name = re.sub(r'(?i)\d{2,3}\s*(kbps|mbps)', '', clean_name)
-                clean_name = re.sub(r'(?i)(official|video|audio|lyric|lyrics)', '', clean_name)
-                clean_name = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_name)
-                clean_name = clean_name.strip()
-                
-                # Try Spotify fallback
-                search_query = urllib.parse.quote(clean_name)
-                results = []
-                if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
-                    async with aiohttp.ClientSession() as session:
-                        auth_string = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
-                        auth_base64 = str(base64.b64encode(auth_string.encode("utf-8")), "utf-8")
-                        async with session.post("https://accounts.spotify.com/api/token",
-                                                headers={"Authorization": f"Basic {auth_base64}", "Content-Type": "application/x-www-form-urlencoded"},
-                                                data="grant_type=client_credentials") as resp:
-                            if resp.status == 200:
-                                token_data = await resp.json()
-                                access_token = token_data.get('access_token')
-                                
-                                async with session.get(f"https://api.spotify.com/v1/search?q={search_query}&type=track&limit=5",
-                                                       headers={"Authorization": f"Bearer {access_token}"}) as s_resp:
-                                    if s_resp.status == 200:
-                                        spotify_data = await s_resp.json()
-                                        results = spotify_data.get('tracks', {}).get('items', [])
-                
-                if not results:
-                    # Fallback to iTunes if Spotify fails or not configured
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(f"https://itunes.apple.com/search?term={search_query}&entity=song&limit=5") as resp:
-                            itunes_data = await resp.json(content_type=None)
-                            results = itunes_data.get('results', [])
-                
-                SONG_SEARCH_CACHE[task_id] = results
-                await render_song_page(status_msg, task_id, results, 0, clean_name)
-            
-                SONG_EVENTS[task_id] = asyncio.Event()
-                await SONG_EVENTS[task_id].wait()
-            
-                choice = SONG_CHOICES.get(task_id, "skip")
-                if choice != "skip":
-                    idx = int(choice)
-                    track_info = SONG_SEARCH_CACHE[task_id][idx]
-                
-                    imported_files = list(organized_dir.rglob("*.*"))
-                    if imported_files:
-                        moved_file = imported_files[0]
-                        tmp_tagged = target_dir / f"tagged_temp{moved_file.suffix}"
-                        tag_cmd = [
-                            "ffmpeg", "-y", "-i", str(moved_file),
-                            "-metadata", f"title={track_info.get('name', track_info.get('trackName', ''))}",
-                            "-metadata", f"artist={track_info.get('artists', [{'name': track_info.get('artistName', '')}])[0].get('name', '')}",
-                            "-metadata", f"album={track_info.get('album', {}).get('name', track_info.get('collectionName', ''))}",
-                            "-c", "copy", str(tmp_tagged)
-                        ]
-                        proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                        await proc.communicate()
-                    
-                        # Wipe and re-run beets
-                        shutil.rmtree(organized_dir, ignore_errors=True)
-                        (target_dir / "library.blb").unlink(missing_ok=True)
-                    
-                        cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(tmp_tagged)]
-                        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                        await proc.communicate()
-                    
-                        # Download Album Poster for Jellyfin
-                        _, _, _, cover_url, _, _ = get_track_info(track_info)
-                        final_files = list(organized_dir.rglob("*.*"))
-                        if final_files and cover_url:
-                            target_album_dir = final_files[0].parent
-                            cover_path = target_album_dir / "folder.jpg"
-                            async with aiohttp.ClientSession() as session:
-                                async with session.get(cover_url) as resp:
-                                    if resp.status == 200:
-                                        with open(cover_path, "wb") as f:
-                                            f.write(await resp.read())
-                                        shutil.copy(cover_path, target_album_dir / "cover.jpg")
-                                        # Embed artwork into the actual audio file
-                                        try:
-                                            embed_artwork(final_files[0], cover_path)
-                                        except:
-                                            pass
-                    
-                        await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
-
-            # after beets, files are in target_dir/organized. Upload that.
-            organized_dir = target_dir / "organized"
-            if not organized_dir.exists() or not any(organized_dir.iterdir()):
-                # Fallback: if beets failed to move it, just upload the original
-                organized_dir = target_dir / "fallback"
-                unknown_artist_dir = organized_dir / "Unknown Artist"
-                unknown_artist_dir.mkdir(parents=True, exist_ok=True)
-                if process_filepath.exists():
-                    shutil.move(str(process_filepath), unknown_artist_dir / process_filepath.name)
-                
-            directories_to_refresh = []
-            if organized_dir.exists():
-                for item in organized_dir.iterdir():
-                    if item.is_dir():
-                        directories_to_refresh.append(item.name)
-                
-            from bot.uploader import perform_autorclone
-            from bot.helpers import refresh_jellyfin
-            _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", status_msg, user_id=user_id, user_display=user_display)
-            
-            if directories_to_refresh:
-                # Refresh parent non-recursively so Rclone discovers the new Artist folders
-                await refresh_jellyfin(telegram_msg=None, target_dir="Songs", recursive="false")
-                for dir_name in directories_to_refresh:
-                    await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Songs/{dir_name}")
-            else:
-                await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir="Songs", recursive="false")
-            
-        except Exception as e:
-            await status_msg.edit_text(f"❌ Song Download Failed: {e}")
-        finally:
-            GLOBAL_TASKS.pop(task_id, None)
-            await task_manager.release(client)
+        await status_msg.edit_text("🎵 <b>Song tagged successfully!</b>\n⏳ Uploading...", parse_mode=ParseMode.HTML)
+        
+        from bot.uploader import perform_autorclone
+        from bot.helpers import refresh_jellyfin
+        _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", status_msg, user_id=user_id, user_display=user_display)
+        
+        # Refresh parent non-recursively so Rclone discovers the new Artist folders
+        await refresh_jellyfin(telegram_msg=None, target_dir="Songs", recursive="false")
+        await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Songs/{safe_artist}")
+        
+    except Exception as e:
+        if status_msg:
+            try:
+                await status_msg.edit_text(f"❌ Song Download Failed: {e}")
+            except:
+                pass
+        logger.error(f"Song upload failed: {e}")
+    finally:
+        GLOBAL_TASKS.pop(task_id, None)
+        await task_manager.release(client)
+        if 'target_dir' in locals() and target_dir.exists():
+            import shutil
             shutil.rmtree(target_dir, ignore_errors=True)
-            
-        return
+        
+    return
 
-    await message.reply_text("Usage: Reply to an audio/document with `/song`", parse_mode=ParseMode.MARKDOWN)
