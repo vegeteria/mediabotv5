@@ -24,40 +24,52 @@ SONG_SEARCH_CACHE = {}
 
 
 
-def embed_artwork(file_path, image_path):
+def embed_metadata(file_path, image_path=None, lyrics=None):
     try:
         from pathlib import Path
         file_path = Path(file_path)
-        image_path = Path(image_path)
-        with open(image_path, "rb") as f:
-            img_data = f.read()
+        img_data = None
+        if image_path:
+            image_path = Path(image_path)
+            if image_path.exists():
+                with open(image_path, "rb") as f:
+                    img_data = f.read()
             
         ext = file_path.suffix.lower()
         if ext == '.m4a' or ext == '.mp4':
             from mutagen.mp4 import MP4, MP4Cover
             audio = MP4(file_path)
-            audio["covr"] = [MP4Cover(img_data, imageformat=MP4Cover.FORMAT_JPEG)]
+            if img_data:
+                audio["covr"] = [MP4Cover(img_data, imageformat=MP4Cover.FORMAT_JPEG)]
+            if lyrics:
+                audio["\xa9lyr"] = lyrics
             audio.save()
         elif ext == '.mp3':
             from mutagen.mp3 import MP3
-            from mutagen.id3 import ID3, APIC
+            from mutagen.id3 import ID3, APIC, USLT, Encoding
             try:
                 audio = MP3(file_path, ID3=ID3)
             except:
                 audio = MP3(file_path)
                 if audio.tags is None:
                     audio.add_tags()
-            audio.tags.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=img_data))
+            if img_data:
+                audio.tags.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=img_data))
+            if lyrics:
+                audio.tags.add(USLT(encoding=Encoding.UTF8, lang='eng', desc='', text=lyrics))
             audio.save()
         elif ext == '.flac':
             from mutagen.flac import Picture, FLAC
             audio = FLAC(file_path)
-            pic = Picture()
-            pic.type = 3
-            pic.mime = "image/jpeg"
-            pic.desc = "Front Cover"
-            pic.data = img_data
-            audio.add_picture(pic)
+            if img_data:
+                pic = Picture()
+                pic.type = 3
+                pic.mime = "image/jpeg"
+                pic.desc = "Front Cover"
+                pic.data = img_data
+                audio.add_picture(pic)
+            if lyrics:
+                audio["LYRICS"] = lyrics
             audio.save()
     except Exception as e:
         import logging
