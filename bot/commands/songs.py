@@ -1,3 +1,4 @@
+import re
 from pyrogram.enums import ParseMode
 import asyncio
 import os
@@ -126,7 +127,7 @@ async def render_song_page(message, task_id, results, page, clean_name=""):
         
     buttons.append([InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")])
     
-    await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
 async def render_song_detail(message, task_id, results, idx, page):
     res = results[idx]
@@ -153,7 +154,7 @@ async def render_song_detail(message, task_id, results, idx, page):
         [InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")]
     ]
     
-    await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, disable_web_page_preview=False)
+    await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, link_preview_options=LinkPreviewOptions(is_disabled=False))
 
 @Client.on_callback_query(filters.regex(r"^songmatch_"))
 async def song_match_callback(client: Client, query):
@@ -189,7 +190,6 @@ async def song_match_callback(client: Client, query):
 
 
 
-from bot.auth import require_auth
 from bot.config import BASE_SONGS, logger
 from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register_user_task
 
@@ -230,7 +230,7 @@ async def download_song(client: Client, message: Message):
         status_msg = await message.reply_text(
             f"📥 Starting download...\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{task_id}`",
             parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
         
         from bot.state import task_manager
@@ -297,7 +297,6 @@ paths:
                 needs_fallback = True
                 
             if needs_fallback:
-                import re
                 clean_name = filepath.stem
                 clean_name = re.sub(r'(?i)\d{2,3}\s*(kbps|mbps)', '', clean_name)
                 clean_name = re.sub(r'(?i)(official|video|audio|lyric|lyrics)', '', clean_name)
@@ -375,7 +374,6 @@ paths:
                                 if resp.status == 200:
                                     with open(cover_path, "wb") as f:
                                         f.write(await resp.read())
-                                    import shutil
                                     shutil.copy(cover_path, target_album_dir / "cover.jpg")
                                     # Embed artwork into the actual audio file
                                     try:
@@ -404,7 +402,6 @@ paths:
             from bot.uploader import perform_autorclone
             _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", status_msg, user_id=user_id, user_display=user_display)
             
-            from bot.helpers import refresh_jellyfin
             if directories_to_refresh:
                 # Refresh parent non-recursively so Rclone discovers the new Artist folders
                 await refresh_jellyfin(telegram_msg=None, target_dir="Songs", recursive="false")
