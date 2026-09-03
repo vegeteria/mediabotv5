@@ -168,7 +168,6 @@ async def refresh_jellyfin(telegram_msg=None, target_dir=None, recursive="true")
                 await telegram_msg.edit_text("⏳ **Rclone RC Unreachable**\nWaiting 65s for natural Google Drive polling before pinging Jellyfin...", parse_mode=ParseMode.MARKDOWN)
             except Exception:
                 pass
-        import asyncio
         await asyncio.sleep(65)
 
     try:
