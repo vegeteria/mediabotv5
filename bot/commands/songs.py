@@ -118,10 +118,41 @@ def get_track_info(res):
         
     return title, artist, album, cover_url, duration_str, url
 
+async def perform_song_search(search_query_raw):
+    search_query = urllib.parse.quote(search_query_raw)
+    results = []
+    if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
+        async with aiohttp.ClientSession() as session:
+            auth_string = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
+            auth_base64 = str(base64.b64encode(auth_string.encode("utf-8")), "utf-8")
+            async with session.post("https://accounts.spotify.com/api/token",
+                                    headers={"Authorization": f"Basic {auth_base64}", "Content-Type": "application/x-www-form-urlencoded"},
+                                    data="grant_type=client_credentials") as resp:
+                if resp.status == 200:
+                    token_data = await resp.json()
+                    access_token = token_data.get('access_token')
+                    
+                    async with session.get(f"https://api.spotify.com/v1/search?q={search_query}&type=track&limit=5",
+                                           headers={"Authorization": f"Bearer {access_token}"}) as s_resp:
+                        if s_resp.status == 200:
+                            spotify_data = await s_resp.json()
+                            results = spotify_data.get('tracks', {}).get('items', [])
+    
+    if not results:
+        # Fallback to iTunes if Spotify fails or not configured
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"https://itunes.apple.com/search?term={search_query}&entity=song&limit=5") as resp:
+                itunes_data = await resp.json(content_type=None)
+                results = itunes_data.get('results', [])
+    return results
+
 async def render_song_page(message, task_id, results, page, clean_name=""):
     if not results:
         text = f"⚠️ <b>No matches found</b>\nI couldn't find any results for '<code>{clean_name}</code>'."
-        buttons = [[InlineKeyboardButton("❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip", style=ButtonStyle.DANGER)]]
+        buttons = [
+            [InlineKeyboardButton("🔍 Manual Search", callback_data=f"songmatch_{task_id}_manualsearch", style=ButtonStyle.PRIMARY)],
+            [InlineKeyboardButton("❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip", style=ButtonStyle.DANGER)]
+        ]
         await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
         return
 
@@ -153,6 +184,7 @@ async def render_song_page(message, task_id, results, page, clean_name=""):
     if nav_buttons:
         buttons.append(nav_buttons)
         
+    buttons.append([InlineKeyboardButton("🔍 Manual Search", callback_data=f"songmatch_{task_id}_manualsearch", style=ButtonStyle.PRIMARY)])
     buttons.append([InlineKeyboardButton("❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip", style=ButtonStyle.DANGER)])
     
     await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, link_preview_options=LinkPreviewOptions(is_disabled=True))
@@ -219,10 +251,22 @@ async def song_match_callback(client: Client, query):
             "step": "wait_custom_lyrics",
             "task_id": task_id,
             "idx": idx,
-            "status_msg_id": query.message.id
+            "status_msg_id": query.message.id,
+            "chat_id": query.message.chat.id
         }
         preserve_task_for_user_input(USER_STATES[query.from_user.id], "⏸️ Waiting for Custom Lyrics...")
         await query.message.edit_text("📝 **Custom Lyrics Mode**\n\nPlease send the synchronized lyrics (or plain text) directly in this chat, or upload a `.lrc` / `.txt` file.\n\nSend `/cancel` to abort this prompt.", parse_mode=ParseMode.MARKDOWN)
+
+    elif action == "manualsearch":
+        from bot.state import USER_STATES, preserve_task_for_user_input
+        USER_STATES[query.from_user.id] = {
+            "step": "wait_manual_song_search",
+            "task_id": task_id,
+            "status_msg_id": query.message.id,
+            "chat_id": query.message.chat.id
+        }
+        preserve_task_for_user_input(USER_STATES[query.from_user.id], "⏸️ Waiting for Manual Song Query...")
+        await query.message.edit_text("🔍 **Manual Search Mode**\n\nPlease type the name of the song (and artist) to search for.\n\nSend `/cancel` to abort this prompt.", parse_mode=ParseMode.MARKDOWN)
         
     elif action in ("page", "back"):
         page = int(data[3])
@@ -307,31 +351,7 @@ async def download_song(client: Client, message: Message):
         
         await status_msg.edit_text(f"🔍 Searching Spotify for: <code>{clean_name}</code>...", parse_mode=ParseMode.HTML)
         
-        search_query = urllib.parse.quote(clean_name)
-        results = []
-        if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
-            async with aiohttp.ClientSession() as session:
-                auth_string = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
-                auth_base64 = str(base64.b64encode(auth_string.encode("utf-8")), "utf-8")
-                async with session.post("https://accounts.spotify.com/api/token",
-                                        headers={"Authorization": f"Basic {auth_base64}", "Content-Type": "application/x-www-form-urlencoded"},
-                                        data="grant_type=client_credentials") as resp:
-                    if resp.status == 200:
-                        token_data = await resp.json()
-                        access_token = token_data.get('access_token')
-                        
-                        async with session.get(f"https://api.spotify.com/v1/search?q={search_query}&type=track&limit=5",
-                                               headers={"Authorization": f"Bearer {access_token}"}) as s_resp:
-                            if s_resp.status == 200:
-                                spotify_data = await s_resp.json()
-                                results = spotify_data.get('tracks', {}).get('items', [])
-        
-        if not results:
-            # Fallback to iTunes if Spotify fails or not configured
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"https://itunes.apple.com/search?term={search_query}&entity=song&limit=5") as resp:
-                    itunes_data = await resp.json(content_type=None)
-                    results = itunes_data.get('results', [])
+        results = await perform_song_search(clean_name)
         
         SONG_SEARCH_CACHE[task_id] = results
         GLOBAL_TASKS[task_id].message = "⏸️ Waiting for your selection in Telegram..."
@@ -371,10 +391,7 @@ async def download_song(client: Client, message: Message):
         final_filename = f"{safe_title}{process_filepath.suffix}"
         final_path = album_dir / final_filename
         
-        if custom_lyrics:
-            lrc_path = album_dir / f"{safe_title}.lrc"
-            with open(lrc_path, "w", encoding="utf-8") as f:
-                f.write(custom_lyrics)
+
         
         # 1. Download cover art if available
         cover_path = album_dir / "cover.jpg"
@@ -477,4 +494,51 @@ async def handle_custom_lyrics(client: Client, message: Message):
     SONG_EVENTS[task_id].set()
     
     await message.reply_text("✅ Lyrics received! Resuming tagging...")
+    raise pyrogram.StopPropagation
+
+
+@Client.on_message(filters.text & filters.private, group=-2)
+async def handle_manual_song_search(client: Client, message: Message):
+    user_id = message.from_user.id
+    from bot.state import USER_STATES
+    if user_id not in USER_STATES or USER_STATES[user_id].get("step") != "wait_manual_song_search":
+        return
+        
+    task_id = USER_STATES[user_id]["task_id"]
+    status_msg_id = USER_STATES[user_id].get("status_msg_id")
+    
+    if message.text.startswith("/"):
+        if message.text == "/cancel":
+            del USER_STATES[user_id]
+            results = SONG_SEARCH_CACHE.get(task_id, [])
+            status_msg = await client.get_messages(message.chat.id, status_msg_id) if status_msg_id else message
+            await render_song_page(status_msg, task_id, results, 0)
+        return
+        
+    search_query = message.text.strip()
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    
+    del USER_STATES[user_id]
+    
+    from bot.state import GLOBAL_TASKS
+    if task_id in GLOBAL_TASKS:
+        GLOBAL_TASKS[task_id].asyncio_task = asyncio.current_task()
+        GLOBAL_TASKS[task_id].message = f"🔍 Searching Spotify for: {search_query}..."
+    
+    status_msg = await client.get_messages(message.chat.id, status_msg_id) if status_msg_id else message
+    try:
+        await status_msg.edit_text(f"🔍 Searching Spotify for: <code>{search_query}</code>...", parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+        
+    results = await perform_song_search(search_query)
+    SONG_SEARCH_CACHE[task_id] = results
+    
+    if task_id in GLOBAL_TASKS:
+        GLOBAL_TASKS[task_id].message = "⏸️ Waiting for your selection in Telegram..."
+        
+    await render_song_page(status_msg, task_id, results, 0, search_query)
     raise pyrogram.StopPropagation
