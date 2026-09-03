@@ -229,7 +229,7 @@ async def download_song(client: Client, message: Message):
     dashboard_link = f"{get_base_url()}/dashboard"
 
     try:
-        await task_manager.acquire(client)
+        await task_manager.acquire(qtask, client)
         status_msg = await message.reply_text(
             f"📥 Starting download...\n\n🌐 <a href='{dashboard_link}'>Open Dashboard</a> | Task ID: <code>{task_id}</code>",
             parse_mode=ParseMode.HTML,
