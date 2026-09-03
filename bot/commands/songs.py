@@ -1,3 +1,4 @@
+from bot.auth import require_auth
 import re
 from pyrogram.enums import ParseMode
 import asyncio
@@ -192,8 +193,6 @@ async def song_match_callback(client: Client, query):
 from bot.config import BASE_SONGS, logger
 from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register_user_task
 
-@Client.on_message(filters.command("song"))
-@require_auth
 @Client.on_message(filters.command("song"))
 @require_auth
 async def download_song(client: Client, message: Message):
