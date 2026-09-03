@@ -401,6 +401,7 @@ paths:
                         directories_to_refresh.append(item.name)
                 
             from bot.uploader import perform_autorclone
+            from bot.helpers import refresh_jellyfin
             _, final_bot_msg = await perform_autorclone(organized_dir, "Songs", status_msg, user_id=user_id, user_display=user_display)
             
             if directories_to_refresh:
