@@ -54,8 +54,8 @@ def embed_metadata(file_path, image_path=None, lyrics=None, title=None, artist=N
                 audio = MP3(file_path, ID3=ID3)
             except:
                 audio = MP3(file_path)
-                if audio.tags is None:
-                    audio.add_tags()
+            if audio.tags is None:
+                audio.add_tags()
             if img_data:
                 audio.tags.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=img_data))
             if lyrics:
@@ -96,7 +96,7 @@ def embed_metadata(file_path, image_path=None, lyrics=None, title=None, artist=N
             audio.save()
     except Exception as e:
         import logging
-        logging.getLogger(__name__).error(f"Failed to embed artwork: {e}")
+        logging.getLogger(__name__).error(f"Failed to embed metadata: {e}")
 
 def get_track_info(res):
 
