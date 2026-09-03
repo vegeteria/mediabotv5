@@ -20,7 +20,48 @@ SONG_CHOICES = {}
 SONG_SEARCH_CACHE = {}
 
 
+
+def embed_artwork(file_path, image_path):
+    try:
+        from pathlib import Path
+        file_path = Path(file_path)
+        image_path = Path(image_path)
+        with open(image_path, "rb") as f:
+            img_data = f.read()
+            
+        ext = file_path.suffix.lower()
+        if ext == '.m4a' or ext == '.mp4':
+            from mutagen.mp4 import MP4, MP4Cover
+            audio = MP4(file_path)
+            audio["covr"] = [MP4Cover(img_data, imageformat=MP4Cover.FORMAT_JPEG)]
+            audio.save()
+        elif ext == '.mp3':
+            from mutagen.mp3 import MP3
+            from mutagen.id3 import ID3, APIC
+            try:
+                audio = MP3(file_path, ID3=ID3)
+            except:
+                audio = MP3(file_path)
+                if audio.tags is None:
+                    audio.add_tags()
+            audio.tags.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=img_data))
+            audio.save()
+        elif ext == '.flac':
+            from mutagen.flac import Picture, FLAC
+            audio = FLAC(file_path)
+            pic = Picture()
+            pic.type = 3
+            pic.mime = "image/jpeg"
+            pic.desc = "Front Cover"
+            pic.data = img_data
+            audio.add_picture(pic)
+            audio.save()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to embed artwork: {e}")
+
 def get_track_info(res):
+
     title = res.get('name') or res.get('trackName', 'Unknown')
     if 'artists' in res and res['artists']:
         artist = res['artists'][0].get('name', 'Unknown')
@@ -336,6 +377,11 @@ paths:
                                         f.write(await resp.read())
                                     import shutil
                                     shutil.copy(cover_path, target_album_dir / "cover.jpg")
+                                    # Embed artwork into the actual audio file
+                                    try:
+                                        embed_artwork(final_files[0], cover_path)
+                                    except:
+                                        pass
                     
                     await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
 
