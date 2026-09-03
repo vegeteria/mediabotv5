@@ -222,12 +222,14 @@ paths:
                 await status_msg.edit_text(
                     header_text,
                     reply_markup=InlineKeyboardMarkup(buttons),
+                    parse_mode=ParseMode.HTML,
                     disable_web_page_preview=False
                 )
             else:
                 header_text = f"⚠️ <b>No matches found</b>\nI couldn't find any results for '<code>{clean_name}</code>'."
                 await status_msg.edit_text(
                     header_text,
+                    parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup(buttons)
                 )
             
