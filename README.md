@@ -191,7 +191,11 @@ https://example.com/part3.rar
 
 ## Changelog
 
-### v5.0.2 - Acoustic Fingerprinting for Songs
+### v5.1.0 - Complete Spotify Interactive UI Refactor
+* **Beets/Acoustid Removal**: Removed all dependencies on `beets`, `pyacoustid`, and `libchromaprint`.
+* **Interactive Tagging**: Replaced automatic fingerprinting with a gorgeous, highly interactive Kurigram paginated UI that queries the Spotify API directly.
+* **Direct Cover Art Injection**: Implemented direct `mutagen` injection of high-res Spotify cover art into media files, ensuring Jellyfin natively displays song posters without scraping.
+* **Folder Structure**: Handled entirely through custom Python logic (`Artist/Album/Track.ext`) prior to uploading.
 
 ### v5.0.1 - Moviebox API Fix
 * **Moviebox Dummy File Fix**: Fixed an issue where the Moviebox API would reject downloads and send a 5.3MB dummy file prompting for an app upgrade. Updated the spoofed `X-Client-Info` header's `version_name` to `4.0.02.0831.03` to match the latest working Android client.
