@@ -1,3 +1,4 @@
+import pyrogram
 from bot.auth import require_auth
 import re
 from pyrogram.enums import ParseMode, ButtonStyle
@@ -152,6 +153,9 @@ async def render_song_detail(message, task_id, results, idx, page):
             InlineKeyboardButton("✅ YES! Tag this Track", callback_data=f"songmatch_{task_id}_confirm_{idx}", style=ButtonStyle.SUCCESS)
         ],
         [
+            InlineKeyboardButton("📝 Embed Custom Lyrics", callback_data=f"songmatch_{task_id}_customlyrics_{idx}", style=ButtonStyle.PRIMARY)
+        ],
+        [
             InlineKeyboardButton("🔙 Back to Search Results", callback_data=f"songmatch_{task_id}_back_{page}", style=ButtonStyle.PRIMARY)
         ],
         [InlineKeyboardButton("❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip", style=ButtonStyle.DANGER)]
@@ -181,6 +185,18 @@ async def song_match_callback(client: Client, query):
         SONG_CHOICES[task_id] = str(idx)
         SONG_EVENTS[task_id].set()
         await query.message.edit_text("⏳ Tagging track...")
+        
+    elif action == "customlyrics":
+        idx = int(data[3])
+        from bot.state import USER_STATES, preserve_task_for_user_input
+        USER_STATES[query.from_user.id] = {
+            "step": "wait_custom_lyrics",
+            "task_id": task_id,
+            "idx": idx,
+            "status_msg_id": query.message.id
+        }
+        preserve_task_for_user_input(USER_STATES[query.from_user.id], "⏸️ Waiting for Custom Lyrics...")
+        await query.message.edit_text("📝 **Custom Lyrics Mode**\n\nPlease send the synchronized lyrics (or plain text) directly in this chat, or upload a `.lrc` / `.txt` file.\n\nSend `/cancel` to abort this prompt.", parse_mode=ParseMode.MARKDOWN)
         
     elif action in ("page", "back"):
         page = int(data[3])
@@ -300,6 +316,7 @@ async def download_song(client: Client, message: Message):
         
         GLOBAL_TASKS[task_id].message = "⏳ Applying metadata tags..."
         choice = SONG_CHOICES.get(task_id, "skip")
+        custom_lyrics = SONG_CHOICES.get(f"{task_id}_lyrics")
         
         title = process_filepath.stem
         artist = "Unknown Artist"
@@ -349,12 +366,11 @@ async def download_song(client: Client, message: Message):
         proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         await proc.communicate()
         
-        # 3. Embed artwork physically using mutagen if cover exists
-        if cover_path.exists():
-            try:
-                embed_artwork(final_path, cover_path)
-            except Exception as e:
-                logger.error(f"Failed to embed artwork: {e}")
+        # 3. Embed artwork and lyrics physically using mutagen
+        try:
+            embed_metadata(final_path, cover_path if cover_path.exists() else None, custom_lyrics)
+        except Exception as e:
+            logger.error(f"Failed to embed metadata: {e}")
                 
         await status_msg.edit_text("🎵 <b>Song tagged successfully!</b>\n⏳ Uploading...", parse_mode=ParseMode.HTML)
         
@@ -382,3 +398,52 @@ async def download_song(client: Client, message: Message):
         
     return
 
+
+
+@Client.on_message((filters.text | filters.document) & filters.private, group=-1)
+async def handle_custom_lyrics(client: Client, message: Message):
+    user_id = message.from_user.id
+    from bot.state import USER_STATES
+    if user_id not in USER_STATES or USER_STATES[user_id].get("step") != "wait_custom_lyrics":
+        return
+        
+    if message.text and message.text.startswith("/"):
+        if message.text == "/cancel":
+            task_id = USER_STATES[user_id]["task_id"]
+            idx = USER_STATES[user_id]["idx"]
+            del USER_STATES[user_id]
+            results = SONG_SEARCH_CACHE.get(task_id, [])
+            if results:
+                status_msg = await client.get_messages(message.chat.id, USER_STATES[user_id]["status_msg_id"]) if "status_msg_id" in USER_STATES[user_id] else message
+                await render_song_detail(status_msg, task_id, results, idx, 0)
+        return
+        
+    lyrics_text = ""
+    if message.document:
+        if not message.document.file_name.lower().endswith(('.lrc', '.txt')):
+            await message.reply_text("❌ Please upload a `.lrc` or `.txt` file.")
+            return
+        file_path = await client.download_media(message)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                lyrics_text = f.read()
+        finally:
+            os.remove(file_path)
+    else:
+        lyrics_text = message.text
+        
+    task_id = USER_STATES[user_id]["task_id"]
+    idx = USER_STATES[user_id]["idx"]
+    
+    from bot.state import GLOBAL_TASKS
+    if task_id in GLOBAL_TASKS:
+        GLOBAL_TASKS[task_id].asyncio_task = asyncio.current_task()
+        
+    del USER_STATES[user_id]
+    
+    SONG_CHOICES[f"{task_id}_lyrics"] = lyrics_text
+    SONG_CHOICES[task_id] = str(idx)
+    SONG_EVENTS[task_id].set()
+    
+    await message.reply_text("✅ Lyrics received! Resuming tagging...")
+    raise pyrogram.StopPropagation
