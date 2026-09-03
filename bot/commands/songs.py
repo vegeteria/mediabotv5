@@ -42,7 +42,7 @@ def embed_metadata(file_path, image_path=None, lyrics=None):
             if img_data:
                 audio["covr"] = [MP4Cover(img_data, imageformat=MP4Cover.FORMAT_JPEG)]
             if lyrics:
-                audio["\xa9lyr"] = lyrics
+                audio["\xa9lyr"] = [lyrics]
             audio.save()
         elif ext == '.mp3':
             from mutagen.mp3 import MP3
@@ -57,6 +57,19 @@ def embed_metadata(file_path, image_path=None, lyrics=None):
                 audio.tags.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=img_data))
             if lyrics:
                 audio.tags.add(USLT(encoding=Encoding.UTF8, lang='eng', desc='', text=lyrics))
+                
+                # Parse LRC to SYLT (Synchronized Lyrics) for MP3
+                import re
+                sylt_data = []
+                for line in lyrics.split('\n'):
+                    match = re.match(r'\[(\d+):(\d+\.\d+)\](.*)', line.strip())
+                    if match:
+                        mins, secs, text = match.groups()
+                        time_ms = int((int(mins) * 60 + float(secs)) * 1000)
+                        sylt_data.append((text.strip(), time_ms))
+                if sylt_data:
+                    from mutagen.id3 import SYLT
+                    audio.tags.add(SYLT(encoding=Encoding.UTF8, lang='eng', format=2, type=1, desc='', text=sylt_data))
             audio.save()
         elif ext == '.flac':
             from mutagen.flac import Picture, FLAC
@@ -69,7 +82,8 @@ def embed_metadata(file_path, image_path=None, lyrics=None):
                 pic.data = img_data
                 audio.add_picture(pic)
             if lyrics:
-                audio["LYRICS"] = lyrics
+                audio["LYRICS"] = [lyrics]
+                audio["UNSYNCEDLYRICS"] = [lyrics]
             audio.save()
     except Exception as e:
         import logging
@@ -356,6 +370,11 @@ async def download_song(client: Client, message: Message):
         
         final_filename = f"{safe_title}{process_filepath.suffix}"
         final_path = album_dir / final_filename
+        
+        if custom_lyrics:
+            lrc_path = album_dir / f"{safe_title}.lrc"
+            with open(lrc_path, "w", encoding="utf-8") as f:
+                f.write(custom_lyrics)
         
         # 1. Download cover art if available
         cover_path = album_dir / "cover.jpg"
