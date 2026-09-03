@@ -212,7 +212,14 @@ async def download_song(client: Client, message: Message):
     import shutil
     
     task_id = f"song_{message.id}"
-    GLOBAL_TASKS[task_id] = GlobalTask(task_id, "Download Song", user_id)
+    qtask = GlobalTask()
+    qtask.id = task_id
+    qtask.user_id = user_id
+    user_display = message.from_user.username or message.from_user.first_name
+    qtask.user_display = f"@" + user_display if message.from_user.username else str(user_display)
+    qtask.asyncio_task = asyncio.current_task()
+    qtask.type = "music"
+    GLOBAL_TASKS[task_id] = qtask
     
     status_msg = None
     target_dir = BASE_SONGS / task_id
