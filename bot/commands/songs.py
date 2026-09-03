@@ -7,8 +7,12 @@ from pathlib import Path
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
+
 import urllib.parse
 import aiohttp
+import base64
+from bot.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 SONG_EVENTS = {}
@@ -126,19 +130,47 @@ paths:
             stdout_str = stdout.decode('utf-8')
             
             if "Importing as-is" in stdout_str:
-                # Try iTunes fallback
+                # Try Spotify fallback
                 search_query = urllib.parse.quote(filepath.stem)
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"https://itunes.apple.com/search?term={search_query}&entity=song&limit=5") as resp:
-                        itunes_data = await resp.json()
+                results = []
+                if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
+                    async with aiohttp.ClientSession() as session:
+                        auth_string = f"{SPOTIFY_CLIENT_ID}:{SPOTIFY_CLIENT_SECRET}"
+                        auth_base64 = str(base64.b64encode(auth_string.encode("utf-8")), "utf-8")
+                        async with session.post("https://accounts.spotify.com/api/token",
+                                                headers={"Authorization": f"Basic {auth_base64}", "Content-Type": "application/x-www-form-urlencoded"},
+                                                data="grant_type=client_credentials") as resp:
+                            if resp.status == 200:
+                                token_data = await resp.json()
+                                access_token = token_data.get('access_token')
+                                
+                                async with session.get(f"https://api.spotify.com/v1/search?q={search_query}&type=track&limit=5",
+                                                       headers={"Authorization": f"Bearer {access_token}"}) as s_resp:
+                                    if s_resp.status == 200:
+                                        spotify_data = await s_resp.json()
+                                        results = spotify_data.get('tracks', {}).get('items', [])
                 
-                results = itunes_data.get('results', [])
+                if not results:
+                    # Fallback to iTunes if Spotify fails or not configured
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(f"https://itunes.apple.com/search?term={search_query}&entity=song&limit=5") as resp:
+                            itunes_data = await resp.json(content_type=None)
+                            results = itunes_data.get('results', [])
+                
                 if results:
                     buttons = []
                     SONG_SEARCH_CACHE[task_id] = results
                     for idx, res in enumerate(results):
-                        title = res.get('trackName', 'Unknown')
-                        artist = res.get('artistName', 'Unknown')
+                        # Handle both Spotify and iTunes formats
+                        title = res.get('name') or res.get('trackName', 'Unknown')
+                        
+                        if 'artists' in res and res['artists']:
+                            artist = res['artists'][0].get('name', 'Unknown')
+                        else:
+                            artist = res.get('artistName', 'Unknown')
+                        
+                        if 'album' in res:
+                            res['collectionName'] = res['album'].get('name', 'Unknown') # standardize for tagging later
                         btn_text = f"{title} - {artist}"
                         if len(btn_text) > 40:
                             btn_text = btn_text[:37] + "..."
@@ -164,9 +196,9 @@ paths:
                             tmp_tagged = target_dir / f"tagged_temp{moved_file.suffix}"
                             tag_cmd = [
                                 "ffmpeg", "-y", "-i", str(moved_file),
-                                "-metadata", f"title={track_info.get('trackName', '')}",
-                                "-metadata", f"artist={track_info.get('artistName', '')}",
-                                "-metadata", f"album={track_info.get('collectionName', '')}",
+                                "-metadata", f"title={track_info.get('name', track_info.get('trackName', ''))}",
+                                "-metadata", f"artist={track_info.get('artists', [{'name': track_info.get('artistName', '')}])[0].get('name', '')}",
+                                "-metadata", f"album={track_info.get('album', {}).get('name', track_info.get('collectionName', ''))}",
                                 "-c", "copy", str(tmp_tagged)
                             ]
                             proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)

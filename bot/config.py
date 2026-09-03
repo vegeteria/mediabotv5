@@ -58,6 +58,10 @@ IS_DUPLICATE_ALLOWED = os.getenv("IS_DUPLICATE_ALLOWED", "False").lower() in ("t
 JELLYFIN_API_KEY = os.getenv("JELLYFIN_API_KEY", "")
 JELLYFIN_URL = os.getenv("JELLYFIN_URL", "http://localhost:8096").rstrip("/")
 
+# ── Spotify Integration ──────────────────────────────────────────────────────
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID", "")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET", "")
+
 # ── Env file path (for persisting authorized users) ──────────────────────────
 ENV_FILE = Path(os.getenv("ENV_FILE_PATH", Path(__file__).parent.parent / ".env"))
 
