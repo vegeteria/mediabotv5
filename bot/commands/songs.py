@@ -177,6 +177,10 @@ paths:
                 
             buttons = []
             SONG_SEARCH_CACHE[task_id] = results
+            
+            cover_url = ""
+            details_text = ""
+            
             for idx, res in enumerate(results):
                 # Handle both Spotify and iTunes formats
                 title = res.get('name') or res.get('trackName', 'Unknown')
@@ -186,8 +190,21 @@ paths:
                 else:
                     artist = res.get('artistName', 'Unknown')
                 
+                album = "Unknown"
                 if 'album' in res:
-                    res['collectionName'] = res['album'].get('name', 'Unknown') # standardize for tagging later
+                    album = res['album'].get('name', 'Unknown')
+                    res['collectionName'] = album # standardize for tagging later
+                    if not cover_url and res['album'].get('images'):
+                        cover_url = res['album']['images'][0].get('url', '')
+                elif 'collectionName' in res:
+                    album = res['collectionName']
+                    if not cover_url:
+                        cover_url = res.get('artworkUrl100', '').replace('100x100bb', '600x600bb')
+                
+                # Add to details text
+                if idx < 3: # Only show details for top 3 to avoid making the message too long
+                    details_text += f"\n{idx+1}️⃣ <b>{title}</b>\n👤 <i>{artist}</i> | 💿 <i>{album}</i>\n"
+                
                 btn_text = f"{title} - {artist}"
                 if len(btn_text) > 40:
                     btn_text = btn_text[:37] + "..."
@@ -195,14 +212,24 @@ paths:
             
             buttons.append([InlineKeyboardButton("Skip (Use As-Is)", callback_data=f"songmatch_{task_id}_skip")])
             
-            header_text = "⚠️ **No automatic match found.**\nDid you mean one of these songs?"
-            if not results:
-                header_text = f"⚠️ **No automatic match found.**\nI couldn't find any results for '{clean_name}'."
-            
-            await status_msg.edit_text(
-                header_text,
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
+            if results:
+                header_text = "🎶 <b>Manual Match Required</b>\nI found multiple possible matches. Please select the correct track:\n"
+                if cover_url:
+                    header_text = f"<a href='{cover_url}'>&#8203;</a>" + header_text
+                
+                header_text += details_text
+                
+                await status_msg.edit_text(
+                    header_text,
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                    disable_web_page_preview=False
+                )
+            else:
+                header_text = f"⚠️ <b>No matches found</b>\nI couldn't find any results for '<code>{clean_name}</code>'."
+                await status_msg.edit_text(
+                    header_text,
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
             
             SONG_EVENTS[task_id] = asyncio.Event()
             await SONG_EVENTS[task_id].wait()
