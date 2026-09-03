@@ -241,7 +241,7 @@ async def download_song(client: Client, message: Message):
         
         from bot.state import update_status_msg
         filepath = await AsyncDownloader.download_telegram_media(
-            message,
+            message.reply_to_message,
             dest_dir=target_dir,
             progress_tracker=tracker,
             user_id=user_id
