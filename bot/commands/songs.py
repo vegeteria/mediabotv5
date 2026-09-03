@@ -129,7 +129,18 @@ paths:
             
             stdout_str = stdout.decode('utf-8')
             
-            if "Importing as-is" in stdout_str:
+            organized_dir = target_dir / "organized"
+            imported_files = list(organized_dir.rglob("*.*"))
+            
+            needs_fallback = False
+            if imported_files:
+                first_file_path = str(imported_files[0])
+                if "Unknown Artist" in first_file_path or "Unknown Album" in first_file_path:
+                    needs_fallback = True
+            elif "Importing as-is" in stdout_str:
+                needs_fallback = True
+                
+            if needs_fallback:
                 # Try Spotify fallback
                 search_query = urllib.parse.quote(filepath.stem)
                 results = []
