@@ -331,58 +331,58 @@ paths:
                             itunes_data = await resp.json(content_type=None)
                             results = itunes_data.get('results', [])
                 
-            SONG_SEARCH_CACHE[task_id] = results
-            await render_song_page(status_msg, task_id, results, 0, clean_name)
+                SONG_SEARCH_CACHE[task_id] = results
+                await render_song_page(status_msg, task_id, results, 0, clean_name)
             
-            SONG_EVENTS[task_id] = asyncio.Event()
-            await SONG_EVENTS[task_id].wait()
+                SONG_EVENTS[task_id] = asyncio.Event()
+                await SONG_EVENTS[task_id].wait()
             
-            choice = SONG_CHOICES.get(task_id, "skip")
-            if choice != "skip":
-                idx = int(choice)
-                track_info = SONG_SEARCH_CACHE[task_id][idx]
+                choice = SONG_CHOICES.get(task_id, "skip")
+                if choice != "skip":
+                    idx = int(choice)
+                    track_info = SONG_SEARCH_CACHE[task_id][idx]
                 
-                imported_files = list(organized_dir.rglob("*.*"))
-                if imported_files:
-                    moved_file = imported_files[0]
-                    tmp_tagged = target_dir / f"tagged_temp{moved_file.suffix}"
-                    tag_cmd = [
-                        "ffmpeg", "-y", "-i", str(moved_file),
-                        "-metadata", f"title={track_info.get('name', track_info.get('trackName', ''))}",
-                        "-metadata", f"artist={track_info.get('artists', [{'name': track_info.get('artistName', '')}])[0].get('name', '')}",
-                        "-metadata", f"album={track_info.get('album', {}).get('name', track_info.get('collectionName', ''))}",
-                        "-c", "copy", str(tmp_tagged)
-                    ]
-                    proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                    await proc.communicate()
+                    imported_files = list(organized_dir.rglob("*.*"))
+                    if imported_files:
+                        moved_file = imported_files[0]
+                        tmp_tagged = target_dir / f"tagged_temp{moved_file.suffix}"
+                        tag_cmd = [
+                            "ffmpeg", "-y", "-i", str(moved_file),
+                            "-metadata", f"title={track_info.get('name', track_info.get('trackName', ''))}",
+                            "-metadata", f"artist={track_info.get('artists', [{'name': track_info.get('artistName', '')}])[0].get('name', '')}",
+                            "-metadata", f"album={track_info.get('album', {}).get('name', track_info.get('collectionName', ''))}",
+                            "-c", "copy", str(tmp_tagged)
+                        ]
+                        proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                        await proc.communicate()
                     
-                    # Wipe and re-run beets
-                    shutil.rmtree(organized_dir, ignore_errors=True)
-                    (target_dir / "library.blb").unlink(missing_ok=True)
+                        # Wipe and re-run beets
+                        shutil.rmtree(organized_dir, ignore_errors=True)
+                        (target_dir / "library.blb").unlink(missing_ok=True)
                     
-                    cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(tmp_tagged)]
-                    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-                    await proc.communicate()
+                        cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(tmp_tagged)]
+                        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                        await proc.communicate()
                     
-                    # Download Album Poster for Jellyfin
-                    _, _, _, cover_url, _, _ = get_track_info(track_info)
-                    final_files = list(organized_dir.rglob("*.*"))
-                    if final_files and cover_url:
-                        target_album_dir = final_files[0].parent
-                        cover_path = target_album_dir / "folder.jpg"
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(cover_url) as resp:
-                                if resp.status == 200:
-                                    with open(cover_path, "wb") as f:
-                                        f.write(await resp.read())
-                                    shutil.copy(cover_path, target_album_dir / "cover.jpg")
-                                    # Embed artwork into the actual audio file
-                                    try:
-                                        embed_artwork(final_files[0], cover_path)
-                                    except:
-                                        pass
+                        # Download Album Poster for Jellyfin
+                        _, _, _, cover_url, _, _ = get_track_info(track_info)
+                        final_files = list(organized_dir.rglob("*.*"))
+                        if final_files and cover_url:
+                            target_album_dir = final_files[0].parent
+                            cover_path = target_album_dir / "folder.jpg"
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(cover_url) as resp:
+                                    if resp.status == 200:
+                                        with open(cover_path, "wb") as f:
+                                            f.write(await resp.read())
+                                        shutil.copy(cover_path, target_album_dir / "cover.jpg")
+                                        # Embed artwork into the actual audio file
+                                        try:
+                                            embed_artwork(final_files[0], cover_path)
+                                        except:
+                                            pass
                     
-                    await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
+                        await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
 
             # after beets, files are in target_dir/organized. Upload that.
             organized_dir = target_dir / "organized"
