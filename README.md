@@ -18,7 +18,6 @@
 | **Movie Downloads** | Direct file download with smart name detection and auto-folder wrapping |
 | **Series Downloads** | Archive extraction + batch audio/video processing + automatic Season folder organization |
 | **Episode Downloads** | Auto-detect series/season/episode from filenames |
-| **Song Downloads** | Download and auto-tag audio files using acoustic fingerprinting (beets+chroma) and organize into precise album folders |
 | **Moviebox Search** | Interactive movie & series search via `/mbmovie` and `/mbseries` |
 | **Smart Detection** | Parses `S01E01`, `Season 1`, `1x01` patterns automatically |
 | **Password Archives** | Handles password-protected series archives seamlessly |
@@ -129,7 +128,6 @@
 | `/movie <url>` | Authorized | Download a movie (creates folder & uploads to Rclone) |
 | `/episode <url>` | Authorized | Download & auto-route an episode to existing Series |
 | `/series <url>` | Authorized | Download, extract, process, and upload a full series |
-| `/song` | Authorized | Reply to an audio file to download, auto-tag (beets), and upload to Songs |
 | `/mbmovie <search>` | Authorized | Search, download, & upload a movie via Moviebox |
 | `/mbseries <search>` | Authorized | Search, download, & upload a series via Moviebox |
 | `/throttle <1-20>` | Authorized | Set your personal download blocks (1 = Direct) |
@@ -148,7 +146,6 @@ status - View all active bot downloads/uploads
 movie - Download a movie from a direct link
 episode - Download and auto-route an episode
 series - Download, extract, process, and organize a series
-song - Download and auto-tag a song via beets
 mbmovie - Search and download a movie via Moviebox
 mbseries - Search and download a series via Moviebox
 refresh - Manually update Jellyfin media library
@@ -195,7 +192,6 @@ https://example.com/part3.rar
 ## Changelog
 
 ### v5.0.2 - Acoustic Fingerprinting for Songs
-* **Feature**: **Precision Song Identification**: Integrated `beets[chroma]` and `pyacoustid` into the `/song` download workflow. The bot now uses `fpcalc` to generate physical acoustic fingerprints of downloaded audio files, flawlessly identifying tracks and organizing them into precise Album folders via the AcoustID and MusicBrainz databases, even if the source file has completely missing or incorrect ID3 tags!
 
 ### v5.0.1 - Moviebox API Fix
 * **Moviebox Dummy File Fix**: Fixed an issue where the Moviebox API would reject downloads and send a 5.3MB dummy file prompting for an app upgrade. Updated the spoofed `X-Client-Info` header's `version_name` to `4.0.02.0831.03` to match the latest working Android client.
