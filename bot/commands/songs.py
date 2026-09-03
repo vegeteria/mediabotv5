@@ -24,7 +24,7 @@ SONG_SEARCH_CACHE = {}
 
 
 
-def embed_metadata(file_path, image_path=None, lyrics=None):
+def embed_metadata(file_path, image_path=None, lyrics=None, title=None, artist=None, album=None):
     try:
         from pathlib import Path
         file_path = Path(file_path)
@@ -46,7 +46,7 @@ def embed_metadata(file_path, image_path=None, lyrics=None):
             audio.save()
         elif ext == '.mp3':
             from mutagen.mp3 import MP3
-            from mutagen.id3 import ID3, APIC, USLT, Encoding
+            from mutagen.id3 import ID3, APIC, USLT, Encoding, TIT2, TPE1, TALB
             try:
                 audio = MP3(file_path, ID3=ID3)
             except:
@@ -70,6 +70,9 @@ def embed_metadata(file_path, image_path=None, lyrics=None):
                 if sylt_data:
                     from mutagen.id3 import SYLT
                     audio.tags.add(SYLT(encoding=Encoding.UTF8, lang='eng', format=2, type=1, desc='', text=sylt_data))
+            if title: audio.tags.add(TIT2(encoding=3, text=title))
+            if artist: audio.tags.add(TPE1(encoding=3, text=artist))
+            if album: audio.tags.add(TALB(encoding=3, text=album))
             audio.save()
         elif ext == '.flac':
             from mutagen.flac import Picture, FLAC
@@ -84,6 +87,9 @@ def embed_metadata(file_path, image_path=None, lyrics=None):
             if lyrics:
                 audio["LYRICS"] = [lyrics]
                 audio["UNSYNCEDLYRICS"] = [lyrics]
+            if title: audio["TITLE"] = [title]
+            if artist: audio["ARTIST"] = [artist]
+            if album: audio["ALBUM"] = [album]
             audio.save()
     except Exception as e:
         import logging
@@ -403,20 +409,13 @@ async def download_song(client: Client, message: Message):
                             f.write(await resp.read())
                         shutil.copy(cover_path, album_dir / "folder.jpg")
         
-        # 2. Apply text tags with ffmpeg
-        tag_cmd = [
-            "ffmpeg", "-y", "-i", str(process_filepath),
-            "-metadata", f"title={title}",
-            "-metadata", f"artist={artist}",
-            "-metadata", f"album={album}",
-            "-c", "copy", str(final_path)
-        ]
-        proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        await proc.communicate()
+        # 2. Safely copy the file instead of using ffmpeg to avoid stream copy failures
+        import shutil
+        shutil.copy2(process_filepath, final_path)
         
-        # 3. Embed artwork and lyrics physically using mutagen
+        # 3. Apply ALL tags (Title, Artist, Album, Cover, Lyrics) natively using mutagen
         try:
-            embed_metadata(final_path, cover_path if cover_path.exists() else None, custom_lyrics)
+            embed_metadata(final_path, cover_path if cover_path.exists() else None, custom_lyrics, title=title, artist=artist, album=album)
         except Exception as e:
             logger.error(f"Failed to embed metadata: {e}")
                 
