@@ -146,8 +146,7 @@ paths:
                     buttons.append([InlineKeyboardButton("Skip (Use As-Is)", callback_data=f"songmatch_{task_id}_skip")])
                     
                     await status_msg.edit_text(
-                        "⚠️ **No automatic match found.**
-Did you mean one of these songs?",
+                        "⚠️ **No automatic match found.**\nDid you mean one of these songs?",
                         reply_markup=InlineKeyboardMarkup(buttons)
                     )
                     
@@ -181,8 +180,7 @@ Did you mean one of these songs?",
                             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
                             await proc.communicate()
                             
-                            await status_msg.edit_text("🎵 **Song tagged successfully!**
-⏳ Uploading...")
+                            await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
 
             # after beets, files are in target_dir/organized. Upload that.
             organized_dir = target_dir / "organized"
