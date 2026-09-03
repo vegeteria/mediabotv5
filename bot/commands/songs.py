@@ -432,7 +432,6 @@ async def download_song(client: Client, message: Message):
             "-c:a", "copy", "-map", "0:a:0",
             str(final_path)
         ]
-        import asyncio
         proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         await proc.communicate()
         
