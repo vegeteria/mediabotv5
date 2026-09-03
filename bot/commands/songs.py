@@ -14,7 +14,7 @@ import aiohttp
 import base64
 from bot.config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, LinkPreviewOptions
 
 SONG_EVENTS = {}
 SONG_CHOICES = {}
