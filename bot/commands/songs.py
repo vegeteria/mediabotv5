@@ -19,18 +19,133 @@ SONG_EVENTS = {}
 SONG_CHOICES = {}
 SONG_SEARCH_CACHE = {}
 
+
+def get_track_info(res):
+    title = res.get('name') or res.get('trackName', 'Unknown')
+    if 'artists' in res and res['artists']:
+        artist = res['artists'][0].get('name', 'Unknown')
+    else:
+        artist = res.get('artistName', 'Unknown')
+        
+    album = "Unknown"
+    cover_url = ""
+    if 'album' in res:
+        album = res['album'].get('name', 'Unknown')
+        if res['album'].get('images'):
+            cover_url = res['album']['images'][0].get('url', '')
+    elif 'collectionName' in res:
+        album = res['collectionName']
+        cover_url = res.get('artworkUrl100', '').replace('100x100bb', '600x600bb')
+    
+    duration_ms = res.get('duration_ms', 0)
+    duration_str = "Unknown"
+    if duration_ms:
+        mins = duration_ms // 60000
+        secs = (duration_ms % 60000) // 1000
+        duration_str = f"{mins}:{secs:02d}"
+        
+    url = res.get('external_urls', {}).get('spotify', '')
+        
+    return title, artist, album, cover_url, duration_str, url
+
+async def render_song_page(message, task_id, results, page, clean_name=""):
+    if not results:
+        text = f"⚠️ <b>No matches found</b>\nI couldn't find any results for '<code>{clean_name}</code>'."
+        buttons = [[InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")]]
+        await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
+        return
+
+    items_per_page = 5
+    total_pages = (len(results) - 1) // items_per_page + 1
+    start_idx = page * items_per_page
+    end_idx = start_idx + items_per_page
+    page_results = results[start_idx:end_idx]
+    
+    buttons = []
+    text = f"🎶 <b>Manual Match Required</b>\nPage {page+1}/{total_pages}\n\nPlease select a track to view details:\n"
+    
+    for i, res in enumerate(page_results):
+        actual_idx = start_idx + i
+        title, artist, album, _, _, _ = get_track_info(res)
+        
+        btn_text = f"{title} - {artist}"
+        if len(btn_text) > 40:
+            btn_text = btn_text[:37] + "..."
+            
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"songmatch_{task_id}_view_{actual_idx}_{page}")])
+        
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"songmatch_{task_id}_page_{page-1}"))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"songmatch_{task_id}_page_{page+1}"))
+        
+    if nav_buttons:
+        buttons.append(nav_buttons)
+        
+    buttons.append([InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")])
+    
+    await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+
+async def render_song_detail(message, task_id, results, idx, page):
+    res = results[idx]
+    title, artist, album, cover_url, duration, url = get_track_info(res)
+    
+    text = f"🎧 <b>Track Details</b>\n\n"
+    if cover_url:
+        text = f"<a href='{cover_url}'>&#8203;</a>" + text
+        
+    text += f"🎵 <b>Title:</b> {title}\n"
+    text += f"👤 <b>Artist:</b> {artist}\n"
+    text += f"💿 <b>Album:</b> {album}\n"
+    text += f"⏱ <b>Duration:</b> {duration}\n"
+    if url:
+        text += f"🔗 <a href='{url}'>Open in Spotify</a>\n"
+        
+    text += "\n<i>Is this the correct track?</i>"
+    
+    buttons = [
+        [
+            InlineKeyboardButton("✅ Confirm", callback_data=f"songmatch_{task_id}_confirm_{idx}"),
+            InlineKeyboardButton("🔙 Back", callback_data=f"songmatch_{task_id}_back_{page}")
+        ],
+        [InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")]
+    ]
+    
+    await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, disable_web_page_preview=False)
+
 @Client.on_callback_query(filters.regex(r"^songmatch_"))
 async def song_match_callback(client: Client, query):
     data = query.data.split("_")
     task_id = data[1]
-    choice = data[2]
+    action = data[2]
     
-    if task_id in SONG_EVENTS:
-        SONG_CHOICES[task_id] = choice
+    if task_id not in SONG_EVENTS or task_id not in SONG_SEARCH_CACHE:
+        await query.answer("Session expired or invalid.", show_alert=True)
+        return
+        
+    results = SONG_SEARCH_CACHE[task_id]
+    
+    if action == "skip":
+        SONG_CHOICES[task_id] = "skip"
         SONG_EVENTS[task_id].set()
-        await query.message.edit_text("⏳ Processing your choice...")
-    else:
-        await query.answer("Task expired", show_alert=True)
+        await query.message.edit_text("⏳ Processing as-is...")
+        
+    elif action == "confirm":
+        idx = int(data[3])
+        SONG_CHOICES[task_id] = str(idx)
+        SONG_EVENTS[task_id].set()
+        await query.message.edit_text("⏳ Tagging track...")
+        
+    elif action in ("page", "back"):
+        page = int(data[3])
+        await render_song_page(query.message, task_id, results, page)
+        
+    elif action == "view":
+        idx = int(data[3])
+        page = int(data[4])
+        await render_song_detail(query.message, task_id, results, idx, page)
+
 
 
 from bot.auth import require_auth
@@ -175,63 +290,8 @@ paths:
                             itunes_data = await resp.json(content_type=None)
                             results = itunes_data.get('results', [])
                 
-            buttons = []
             SONG_SEARCH_CACHE[task_id] = results
-            
-            cover_url = ""
-            details_text = ""
-            
-            for idx, res in enumerate(results):
-                # Handle both Spotify and iTunes formats
-                title = res.get('name') or res.get('trackName', 'Unknown')
-                
-                if 'artists' in res and res['artists']:
-                    artist = res['artists'][0].get('name', 'Unknown')
-                else:
-                    artist = res.get('artistName', 'Unknown')
-                
-                album = "Unknown"
-                if 'album' in res:
-                    album = res['album'].get('name', 'Unknown')
-                    res['collectionName'] = album # standardize for tagging later
-                    if not cover_url and res['album'].get('images'):
-                        cover_url = res['album']['images'][0].get('url', '')
-                elif 'collectionName' in res:
-                    album = res['collectionName']
-                    if not cover_url:
-                        cover_url = res.get('artworkUrl100', '').replace('100x100bb', '600x600bb')
-                
-                # Add to details text
-                if idx < 3: # Only show details for top 3 to avoid making the message too long
-                    details_text += f"\n{idx+1}️⃣ <b>{title}</b>\n👤 <i>{artist}</i> | 💿 <i>{album}</i>\n"
-                
-                btn_text = f"{title} - {artist}"
-                if len(btn_text) > 40:
-                    btn_text = btn_text[:37] + "..."
-                buttons.append([InlineKeyboardButton(btn_text, callback_data=f"songmatch_{task_id}_{idx}")])
-            
-            buttons.append([InlineKeyboardButton("Skip (Use As-Is)", callback_data=f"songmatch_{task_id}_skip")])
-            
-            if results:
-                header_text = "🎶 <b>Manual Match Required</b>\nI found multiple possible matches. Please select the correct track:\n"
-                if cover_url:
-                    header_text = f"<a href='{cover_url}'>&#8203;</a>" + header_text
-                
-                header_text += details_text
-                
-                await status_msg.edit_text(
-                    header_text,
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                    parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=False
-                )
-            else:
-                header_text = f"⚠️ <b>No matches found</b>\nI couldn't find any results for '<code>{clean_name}</code>'."
-                await status_msg.edit_text(
-                    header_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup(buttons)
-                )
+            await render_song_page(status_msg, task_id, results, 0, clean_name)
             
             SONG_EVENTS[task_id] = asyncio.Event()
             await SONG_EVENTS[task_id].wait()
@@ -262,6 +322,18 @@ paths:
                     cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(tmp_tagged)]
                     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
                     await proc.communicate()
+                    
+                    # Download Album Poster for Jellyfin
+                    _, _, _, cover_url, _, _ = get_track_info(track_info)
+                    final_files = list(organized_dir.rglob("*.*"))
+                    if final_files and cover_url:
+                        target_album_dir = final_files[0].parent
+                        cover_path = target_album_dir / "folder.jpg"
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(cover_url) as resp:
+                                if resp.status == 200:
+                                    with open(cover_path, "wb") as f:
+                                        f.write(await resp.read())
                     
                     await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
 
