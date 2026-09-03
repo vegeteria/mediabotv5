@@ -10,3 +10,4 @@ curl_cffi>=0.5.9
 lxml>=4.9.3
 requests>=2.31.0
 beets
+pyacoustid

@@ -75,7 +75,7 @@ async def download_song(client: Client, message: Message):
             # create beets config
             beets_config = target_dir / "config.yaml"
             beets_config_content = f"""
-plugins: fromfilename
+plugins: fromfilename chroma
 directory: {target_dir}/organized
 library: {target_dir}/library.blb
 import:
@@ -87,7 +87,7 @@ import:
     singletons: yes
 paths:
     default: %if{{$albumartist,$albumartist,%if{{$artist,$artist,Unknown Artist}}}}/%if{{$album,$album,Unknown Album}}/$track - %if{{$title,$title,Unknown Title}}
-    singleton: %if{{$artist,$artist,Unknown Artist}}/Non-Album/%if{{$title,$title,Unknown Title}}
+    singleton: %if{{$albumartist,$albumartist,%if{{$artist,$artist,Unknown Artist}}}}/%if{{$album,$album,Unknown Album}}/$track - %if{{$title,$title,Unknown Title}}
 """
             with open(beets_config, "w") as f:
                 f.write(beets_config_content)

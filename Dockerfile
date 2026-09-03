@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     gcc \
     python3-dev \
+    libchromaprint-tools \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

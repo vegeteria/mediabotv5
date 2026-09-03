@@ -18,6 +18,7 @@
 | **Movie Downloads** | Direct file download with smart name detection and auto-folder wrapping |
 | **Series Downloads** | Archive extraction + batch audio/video processing + automatic Season folder organization |
 | **Episode Downloads** | Auto-detect series/season/episode from filenames |
+| **Song Downloads** | Download and auto-tag audio files using acoustic fingerprinting (beets+chroma) and organize into precise album folders |
 | **Moviebox Search** | Interactive movie & series search via `/mbmovie` and `/mbseries` |
 | **Smart Detection** | Parses `S01E01`, `Season 1`, `1x01` patterns automatically |
 | **Password Archives** | Handles password-protected series archives seamlessly |
@@ -192,6 +193,9 @@ https://example.com/part3.rar
 > The `/throttle` setting applies to all direct-link downloads. Downloads via `mbmovie`/`mbseries` are hardcoded to **5 blocks** for server stability.
 
 ## Changelog
+
+### v5.0.2 - Acoustic Fingerprinting for Songs
+* **Feature**: **Precision Song Identification**: Integrated `beets[chroma]` and `pyacoustid` into the `/song` download workflow. The bot now uses `fpcalc` to generate physical acoustic fingerprints of downloaded audio files, flawlessly identifying tracks and organizing them into precise Album folders via the AcoustID and MusicBrainz databases, even if the source file has completely missing or incorrect ID3 tags!
 
 ### v5.0.1 - Moviebox API Fix
 * **Moviebox Dummy File Fix**: Fixed an issue where the Moviebox API would reject downloads and send a 5.3MB dummy file prompting for an app upgrade. Updated the spoofed `X-Client-Info` header's `version_name` to `4.0.02.0831.03` to match the latest working Android client.

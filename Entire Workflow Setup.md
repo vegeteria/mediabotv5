@@ -204,5 +204,7 @@ docker compose up -d --build
 
 **Note on Series Processing Workflow:** When downloading a series archive, the bot will first **extract the archive** (showing a live 7z progress bar in the `/status` queue). Once extracted, it will prompt you with processing options (FFmpeg Audio/MKV Faststart), followed immediately by audio track selection if requested. This ensures no waiting gap between processing choices!
 
+**Note on Song Downloading:** When downloading songs via `/song`, the bot utilizes acoustic fingerprinting (via `beets` and `pyacoustid`) to physically scan the audio data. It will automatically fetch perfect ID3 tags and organize the track into a precise Album folder on your cloud drive, even if the original file had missing or incorrect metadata!
+
 **Workflow Complete! 🎉**
 You can now go to Telegram, send `/start` to your bot, and begin downloading!
