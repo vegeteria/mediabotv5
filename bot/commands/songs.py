@@ -94,7 +94,7 @@ def get_track_info(res):
 async def render_song_page(message, task_id, results, page, clean_name=""):
     if not results:
         text = f"⚠️ <b>No matches found</b>\nI couldn't find any results for '<code>{clean_name}</code>'."
-        buttons = [[InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")]]
+        buttons = [[InlineKeyboardButton("🔴 ❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip")]]
         await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
         return
 
@@ -111,7 +111,7 @@ async def render_song_page(message, task_id, results, page, clean_name=""):
         actual_idx = start_idx + i
         title, artist, album, _, _, _ = get_track_info(res)
         
-        btn_text = f"{title} - {artist}"
+        btn_text = f"🎵 {title} - {artist}"
         if len(btn_text) > 40:
             btn_text = btn_text[:37] + "..."
             
@@ -126,7 +126,7 @@ async def render_song_page(message, task_id, results, page, clean_name=""):
     if nav_buttons:
         buttons.append(nav_buttons)
         
-    buttons.append([InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")])
+    buttons.append([InlineKeyboardButton("🔴 ❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip")])
     
     await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
@@ -149,10 +149,12 @@ async def render_song_detail(message, task_id, results, idx, page):
     
     buttons = [
         [
-            InlineKeyboardButton("✅ Confirm", callback_data=f"songmatch_{task_id}_confirm_{idx}"),
-            InlineKeyboardButton("🔙 Back", callback_data=f"songmatch_{task_id}_back_{page}")
+            InlineKeyboardButton("🟢 ✅ YES! Tag this Track", callback_data=f"songmatch_{task_id}_confirm_{idx}")
         ],
-        [InlineKeyboardButton("❌ Cancel Session (As-Is)", callback_data=f"songmatch_{task_id}_skip")]
+        [
+            InlineKeyboardButton("🔵 🔙 Back to Search Results", callback_data=f"songmatch_{task_id}_back_{page}")
+        ],
+        [InlineKeyboardButton("🔴 ❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip")]
     ]
     
     await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, link_preview_options=LinkPreviewOptions(is_disabled=False))
