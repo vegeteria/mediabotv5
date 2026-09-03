@@ -212,7 +212,7 @@ async def download_song(client: Client, message: Message):
     from bot.state import GLOBAL_TASKS, GlobalTask
     import shutil
     
-    task_id = f"song_{message.id}"
+    task_id = f"song{message.id}"
     qtask = GlobalTask()
     qtask.id = task_id
     qtask.user_id = user_id
@@ -290,11 +290,13 @@ async def download_song(client: Client, message: Message):
                     results = itunes_data.get('results', [])
         
         SONG_SEARCH_CACHE[task_id] = results
+        GLOBAL_TASKS[task_id].message = "⏸️ Waiting for your selection in Telegram..."
         await render_song_page(status_msg, task_id, results, 0, clean_name)
         
         SONG_EVENTS[task_id] = asyncio.Event()
         await SONG_EVENTS[task_id].wait()
         
+        GLOBAL_TASKS[task_id].message = "⏳ Applying metadata tags..."
         choice = SONG_CHOICES.get(task_id, "skip")
         
         title = process_filepath.stem
