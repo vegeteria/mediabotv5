@@ -7,6 +7,28 @@ from pathlib import Path
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
+import urllib.parse
+import aiohttp
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+SONG_EVENTS = {}
+SONG_CHOICES = {}
+SONG_SEARCH_CACHE = {}
+
+@Client.on_callback_query(filters.regex(r"^songmatch_"))
+async def song_match_callback(client: Client, query):
+    data = query.data.split("_")
+    task_id = data[1]
+    choice = data[2]
+    
+    if task_id in SONG_EVENTS:
+        SONG_CHOICES[task_id] = choice
+        SONG_EVENTS[task_id].set()
+        await query.message.edit_text("⏳ Processing your choice...")
+    else:
+        await query.answer("Task expired", show_alert=True)
+
+
 from bot.auth import require_auth
 from bot.config import BASE_SONGS, logger
 from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register_user_task
@@ -101,6 +123,67 @@ paths:
             )
             stdout, _ = await process.communicate()
             
+            stdout_str = stdout.decode('utf-8')
+            
+            if "Importing as-is" in stdout_str:
+                # Try iTunes fallback
+                search_query = urllib.parse.quote(filepath.stem)
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"https://itunes.apple.com/search?term={search_query}&entity=song&limit=5") as resp:
+                        itunes_data = await resp.json()
+                
+                results = itunes_data.get('results', [])
+                if results:
+                    buttons = []
+                    SONG_SEARCH_CACHE[task_id] = results
+                    for idx, res in enumerate(results):
+                        title = res.get('trackName', 'Unknown')
+                        artist = res.get('artistName', 'Unknown')
+                        btn_text = f"{title} - {artist}"
+                        if len(btn_text) > 40:
+                            btn_text = btn_text[:37] + "..."
+                        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"songmatch_{task_id}_{idx}")])
+                    buttons.append([InlineKeyboardButton("Skip (Use As-Is)", callback_data=f"songmatch_{task_id}_skip")])
+                    
+                    await status_msg.edit_text(
+                        "⚠️ **No automatic match found.**
+Did you mean one of these songs?",
+                        reply_markup=InlineKeyboardMarkup(buttons)
+                    )
+                    
+                    SONG_EVENTS[task_id] = asyncio.Event()
+                    await SONG_EVENTS[task_id].wait()
+                    
+                    choice = SONG_CHOICES.get(task_id, "skip")
+                    if choice != "skip":
+                        idx = int(choice)
+                        track_info = SONG_SEARCH_CACHE[task_id][idx]
+                        
+                        imported_files = list(organized_dir.rglob("*.*"))
+                        if imported_files:
+                            moved_file = imported_files[0]
+                            tmp_tagged = target_dir / f"tagged_temp{moved_file.suffix}"
+                            tag_cmd = [
+                                "ffmpeg", "-y", "-i", str(moved_file),
+                                "-metadata", f"title={track_info.get('trackName', '')}",
+                                "-metadata", f"artist={track_info.get('artistName', '')}",
+                                "-metadata", f"album={track_info.get('collectionName', '')}",
+                                "-c", "copy", str(tmp_tagged)
+                            ]
+                            proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                            await proc.communicate()
+                            
+                            # Wipe and re-run beets
+                            shutil.rmtree(organized_dir, ignore_errors=True)
+                            (target_dir / "library.blb").unlink(missing_ok=True)
+                            
+                            cmd = ["beet", "-c", str(beets_config), "import", "-q", "-s", str(tmp_tagged)]
+                            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                            await proc.communicate()
+                            
+                            await status_msg.edit_text("🎵 **Song tagged successfully!**
+⏳ Uploading...")
+
             # after beets, files are in target_dir/organized. Upload that.
             organized_dir = target_dir / "organized"
             if not organized_dir.exists() or not any(organized_dir.iterdir()):
