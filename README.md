@@ -193,6 +193,9 @@ https://example.com/part3.rar
 
 ## Changelog
 
+### v5.0.1 - Moviebox API Fix
+* **Moviebox Dummy File Fix**: Fixed an issue where the Moviebox API would reject downloads and send a 5.3MB dummy file prompting for an app upgrade. Updated the spoofed `X-Client-Info` header's `version_name` to `3.0.09.1014.03` to match the latest working Android client.
+
 ### v5.0 - Kurigram Migration & Refactor
 #### 1. Core Framework Migration
 * **Dependency Swap**: Removed `hydrogram` from `requirements.txt` and installed `kurigram`. 

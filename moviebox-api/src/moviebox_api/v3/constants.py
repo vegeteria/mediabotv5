@@ -81,7 +81,7 @@ def _generate_client_info() -> tuple[str, str]:
         f"{device['model']}; Build/{android['build']}; Cronet/135.0.7012.3)"
     )
     client_info = (
-        f'{{"package_name":"com.community.oneroom","version_name":"3.0.03.0529.03",'
+        f'{{"package_name":"com.community.oneroom","version_name":"3.0.09.1014.03",'
         f'"version_code":{version_code},"os":"android","os_version":"{android["version"]}",'
         f'"install_ch":"ps","device_id":"{device_id}","install_store":"ps",'
         f'"gaid":"{gaid}","brand":"{device["brand"]}","model":"{device["model"]}",'
