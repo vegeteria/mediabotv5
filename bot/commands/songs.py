@@ -426,9 +426,20 @@ async def download_song(client: Client, message: Message):
                             f.write(await resp.read())
                         shutil.copy(cover_path, album_dir / "folder.jpg")
         
-        # 2. Safely copy the file instead of using ffmpeg to avoid stream copy failures
-        import shutil
-        shutil.copy2(process_filepath, final_path)
+        # 2. Purify the stream and fix broken containers using ffmpeg (crucial for web playback)
+        tag_cmd = [
+            "ffmpeg", "-y", "-i", str(process_filepath),
+            "-c:a", "copy", "-map", "0:a:0",
+            str(final_path)
+        ]
+        import asyncio
+        proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        await proc.communicate()
+        
+        # Fallback if ffmpeg fails (e.g. incompatible stream copy)
+        if proc.returncode != 0:
+            import shutil
+            shutil.copy2(process_filepath, final_path)
         
         # 3. Apply ALL tags (Title, Artist, Album, Cover, Lyrics) natively using mutagen
         try:
