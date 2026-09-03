@@ -426,25 +426,32 @@ async def download_song(client: Client, message: Message):
                             f.write(await resp.read())
                         shutil.copy(cover_path, album_dir / "folder.jpg")
         
-        # 2. Purify the stream and fix broken containers using ffmpeg (crucial for web playback)
+        import shutil
+        temp_path = album_dir / f"temp_{final_filename}"
+        shutil.copy2(process_filepath, temp_path)
+        
+        # 2. Apply ALL tags (Title, Artist, Album, Cover, Lyrics) natively using mutagen first
+        try:
+            embed_metadata(temp_path, cover_path if cover_path.exists() else None, custom_lyrics, title=title, artist=artist, album=album)
+        except Exception as e:
+            logger.error(f"Failed to embed metadata: {e}")
+            
+        # 3. Purify the stream, rebuild the container, and enforce web-streaming compatibility (moov atom faststart)
         tag_cmd = [
-            "ffmpeg", "-y", "-i", str(process_filepath),
-            "-c:a", "copy", "-map", "0:a:0",
+            "ffmpeg", "-y", "-i", str(temp_path),
+            "-c", "copy", "-map", "0",
+            "-movflags", "+faststart",
             str(final_path)
         ]
         proc = await asyncio.create_subprocess_exec(*tag_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         await proc.communicate()
         
-        # Fallback if ffmpeg fails (e.g. incompatible stream copy)
+        # Fallback if ffmpeg fails
         if proc.returncode != 0:
-            import shutil
-            shutil.copy2(process_filepath, final_path)
-        
-        # 3. Apply ALL tags (Title, Artist, Album, Cover, Lyrics) natively using mutagen
-        try:
-            embed_metadata(final_path, cover_path if cover_path.exists() else None, custom_lyrics, title=title, artist=artist, album=album)
-        except Exception as e:
-            logger.error(f"Failed to embed metadata: {e}")
+            shutil.copy2(temp_path, final_path)
+            
+        if temp_path.exists():
+            temp_path.unlink()
                 
         await status_msg.edit_text("🎵 <b>Song tagged successfully!</b>\n⏳ Uploading...", parse_mode=ParseMode.HTML)
         
