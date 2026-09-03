@@ -1,6 +1,6 @@
 from bot.auth import require_auth
 import re
-from pyrogram.enums import ParseMode
+from pyrogram.enums import ParseMode, ButtonStyle
 import asyncio
 import os
 import shutil
@@ -94,7 +94,7 @@ def get_track_info(res):
 async def render_song_page(message, task_id, results, page, clean_name=""):
     if not results:
         text = f"⚠️ <b>No matches found</b>\nI couldn't find any results for '<code>{clean_name}</code>'."
-        buttons = [[InlineKeyboardButton("🔴 ❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip")]]
+        buttons = [[InlineKeyboardButton("❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip", style=ButtonStyle.DANGER)]]
         await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML)
         return
 
@@ -115,18 +115,18 @@ async def render_song_page(message, task_id, results, page, clean_name=""):
         if len(btn_text) > 40:
             btn_text = btn_text[:37] + "..."
             
-        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"songmatch_{task_id}_view_{actual_idx}_{page}")])
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"songmatch_{task_id}_view_{actual_idx}_{page}", style=ButtonStyle.PRIMARY)])
         
     nav_buttons = []
     if page > 0:
         nav_buttons.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"songmatch_{task_id}_page_{page-1}"))
     if page < total_pages - 1:
-        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"songmatch_{task_id}_page_{page+1}"))
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"songmatch_{task_id}_page_{page+1}", style=ButtonStyle.PRIMARY))
         
     if nav_buttons:
         buttons.append(nav_buttons)
         
-    buttons.append([InlineKeyboardButton("🔴 ❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip")])
+    buttons.append([InlineKeyboardButton("❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip", style=ButtonStyle.DANGER)])
     
     await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, link_preview_options=LinkPreviewOptions(is_disabled=True))
 
@@ -149,12 +149,12 @@ async def render_song_detail(message, task_id, results, idx, page):
     
     buttons = [
         [
-            InlineKeyboardButton("🟢 ✅ YES! Tag this Track", callback_data=f"songmatch_{task_id}_confirm_{idx}")
+            InlineKeyboardButton("✅ YES! Tag this Track", callback_data=f"songmatch_{task_id}_confirm_{idx}", style=ButtonStyle.SUCCESS)
         ],
         [
-            InlineKeyboardButton("🔵 🔙 Back to Search Results", callback_data=f"songmatch_{task_id}_back_{page}")
+            InlineKeyboardButton("🔙 Back to Search Results", callback_data=f"songmatch_{task_id}_back_{page}", style=ButtonStyle.PRIMARY)
         ],
-        [InlineKeyboardButton("🔴 ❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip")]
+        [InlineKeyboardButton("❌ Keep Original Metadata (Skip)", callback_data=f"songmatch_{task_id}_skip", style=ButtonStyle.DANGER)]
     ]
     
     await message.edit_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=ParseMode.HTML, link_preview_options=LinkPreviewOptions(is_disabled=False))
