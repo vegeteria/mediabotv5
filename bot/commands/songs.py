@@ -191,7 +191,7 @@ async def song_match_callback(client: Client, query):
 
 
 from bot.config import BASE_SONGS, logger
-from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register_user_task
+from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register_user_task, task_manager
 
 @Client.on_message(filters.command("song"))
 @require_auth

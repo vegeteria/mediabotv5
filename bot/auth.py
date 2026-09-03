@@ -1,3 +1,4 @@
+from pyrogram.types import LinkPreviewOptions
 """
 Authorization management – persists allowed user IDs in the .env file.
 """
@@ -133,7 +134,7 @@ def require_auth(func):
                 else:
                     msg = "⛔ You are not an Admin. Please use my commands inside the group chat!"
                     
-                await message.reply_text(msg, disable_web_page_preview=True)
+                await message.reply_text(msg, link_preview_options=LinkPreviewOptions(is_disabled=True))
                 return
                 
             elif not is_group_member:
