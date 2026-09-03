@@ -380,13 +380,16 @@ class AsyncDownloader:
             
         dest_dir.mkdir(parents=True, exist_ok=True)
         
-        media = message.document or message.video or message.audio
+        media = message.document or message.video or message.audio or getattr(message, "voice", None)
         filename = getattr(media, "file_name", "telegram_download.ext")
+        if not hasattr(media, "file_name") and getattr(message, "voice", None):
+            filename = "voice_message.ogg"
+            
         dest_path = dest_dir / filename
         
         if progress_tracker:
             progress_tracker.filename = filename
-            progress_tracker.total_size = media.file_size
+            progress_tracker.total_size = getattr(media, "file_size", 0)
             
         async def progress_callback(current, total):
             if progress_tracker:

@@ -196,10 +196,11 @@ from bot.state import USER_STATES, USER_TASKS, check_concurrency_limit, register
 @Client.on_message(filters.command("song"))
 @require_auth
 async def download_song(client: Client, message: Message):
-    if not message.reply_to_message:
-        await message.reply_text("Usage: Reply to an audio/document with `/song`", parse_mode=ParseMode.MARKDOWN)
-        return
     """Handle /song command."""
+    if not message.reply_to_message or not (message.reply_to_message.audio or message.reply_to_message.document or message.reply_to_message.video or message.reply_to_message.voice):
+        await message.reply_text("Usage: Reply to an audio, video, or document with `/song`", parse_mode=ParseMode.MARKDOWN)
+        return
+
     user_id = message.from_user.id
     if not check_concurrency_limit(user_id):
         await message.reply_text("❌ You already have an active process. Please wait or use /cancel.")
