@@ -43,6 +43,9 @@ def embed_metadata(file_path, image_path=None, lyrics=None, title=None, artist=N
                 audio["covr"] = [MP4Cover(img_data, imageformat=MP4Cover.FORMAT_JPEG)]
             if lyrics:
                 audio["\xa9lyr"] = [lyrics]
+            if title: audio["\xa9nam"] = [title]
+            if artist: audio["\xa9ART"] = [artist]
+            if album: audio["\xa9alb"] = [album]
             audio.save()
         elif ext == '.mp3':
             from mutagen.mp3 import MP3
@@ -348,6 +351,20 @@ async def download_song(client: Client, message: Message):
             
         process_filepath = Path(filepath)
         
+        # Ensure process_filepath has an extension
+        if not process_filepath.suffix:
+            media = message.reply_to_message.document or message.reply_to_message.audio or getattr(message.reply_to_message, "voice", None)
+            mime = getattr(media, "mime_type", "")
+            ext = ".mp3"
+            if "mp4" in mime or "m4a" in mime: ext = ".m4a"
+            elif "flac" in mime: ext = ".flac"
+            elif "ogg" in mime: ext = ".ogg"
+            elif "wav" in mime: ext = ".wav"
+            import os
+            new_path = process_filepath.with_suffix(ext)
+            os.rename(process_filepath, new_path)
+            process_filepath = new_path
+            
         # Clean the filename for searching
         clean_name = process_filepath.stem
         clean_name = re.sub(r'(?i)\d{2,3}\s*(kbps|mbps|hz)', '', clean_name)
