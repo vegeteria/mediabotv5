@@ -334,6 +334,8 @@ paths:
                                 if resp.status == 200:
                                     with open(cover_path, "wb") as f:
                                         f.write(await resp.read())
+                                    import shutil
+                                    shutil.copy(cover_path, target_album_dir / "cover.jpg")
                     
                     await status_msg.edit_text("🎵 **Song tagged successfully!**\n⏳ Uploading...")
 
