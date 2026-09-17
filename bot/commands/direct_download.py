@@ -1,3 +1,4 @@
+from pyrogram.types import LinkPreviewOptions
 from pyrogram.enums import ParseMode
 import asyncio
 """
@@ -47,7 +48,7 @@ async def download_movie(client: Client, message: Message):
         status_msg = await message.reply_text(
             f"📥 Starting download...\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{task_id}`",
             parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
         try:
             unorganized_dir = BASE_MOVIES / ".unorganized"
@@ -128,7 +129,7 @@ async def download_episode(client: Client, message: Message):
         status_msg = await message.reply_text(
             f"📥 Starting download...\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{task_id}`",
             parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
         try:
             unorganized_dir = BASE_SERIES / ".unorganized"
@@ -213,7 +214,7 @@ async def download_series(client: Client, message: Message):
         status_msg = await message.reply_text(
             f"📥 Starting download...\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{task_id}`",
             parse_mode=ParseMode.MARKDOWN,
-            disable_web_page_preview=True
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
         try:
             unorganized_dir = BASE_SERIES / ".unorganized"

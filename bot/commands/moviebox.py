@@ -1,3 +1,4 @@
+from pyrogram.types import LinkPreviewOptions
 import pyrogram
 from pyrogram.enums import ParseMode
 import asyncio
@@ -403,7 +404,7 @@ async def _start_download(query, user_id, state):
                 chat_id=user_id,
                 text=dm_text,
                 parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True
+                link_preview_options=LinkPreviewOptions(is_disabled=True)
             )
             await query.edit_message_text("✅ <b>Task Started!</b> Check your DM for the dashboard link.", parse_mode=ParseMode.HTML)
         except Exception as e:
@@ -413,7 +414,7 @@ async def _start_download(query, user_id, state):
                 await query.edit_message_text(
                     dm_text,
                     parse_mode=ParseMode.HTML,
-                    disable_web_page_preview=True
+                    link_preview_options=LinkPreviewOptions(is_disabled=True)
                 )
             except Exception as e2:
                 logging.error(f"EDIT FAILED: {e2}")

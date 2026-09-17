@@ -1,3 +1,4 @@
+from pyrogram.types import LinkPreviewOptions
 from pyrogram.enums import ParseMode
 """
 Shared mutable state for user tasks and conversation state machines.
@@ -79,9 +80,9 @@ async def update_status_msg(status_msg, text: str):
         
     try:
         if hasattr(status_msg, "edit_text"):
-            await status_msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+            await status_msg.edit_text(text, parse_mode=ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
         else:
-            await status_msg.reply_text(text, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+            await status_msg.reply_text(text, parse_mode=ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
     except Exception:
         pass
 

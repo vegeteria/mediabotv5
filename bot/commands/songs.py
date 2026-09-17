@@ -1,3 +1,4 @@
+from pyrogram.types import LinkPreviewOptions
 import pyrogram
 from bot.auth import require_auth
 import re
@@ -331,7 +332,7 @@ async def download_song(client: Client, message: Message):
         status_msg = await message.reply_text(
             f"📥 Starting download...\n\n🌐 <a href='{dashboard_link}'>Open Dashboard</a> | Task ID: <code>{task_id}</code>",
             parse_mode=ParseMode.HTML,
-            disable_web_page_preview=True
+            link_preview_options=LinkPreviewOptions(is_disabled=True)
         )
         
         from bot.downloader import ProgressTracker

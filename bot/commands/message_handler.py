@@ -1,3 +1,4 @@
+from pyrogram.types import LinkPreviewOptions
 from pyrogram.enums import ParseMode
 import asyncio
 """
@@ -99,7 +100,7 @@ async def handle_message_input(client: Client, message: Message):
             dashboard_link = f"{get_base_url()}/dashboard"
             msg = f"✅ **Task Started!**\n\nTrack progress in real-time on the Web Dashboard:\n🌐 [Open Dashboard]({dashboard_link})"
 
-            status_msg = await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+            status_msg = await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
             from bot.uploader import perform_autorclone
             _, final_bot_msg = await perform_autorclone(dest_folder, f"Movies/{folder_name}", status_msg, user_id=user_id)
             
@@ -486,7 +487,7 @@ async def handle_message_input(client: Client, message: Message):
                 dashboard_link = f"{get_base_url()}/dashboard"
                 msg = f"✅ **Task Started!**\n\nTrack progress in real-time on the Web Dashboard:\n🌐 [Open Dashboard]({dashboard_link})"
 
-                status_msg = await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+                status_msg = await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
                 from bot.uploader import perform_autorclone
                 _, final_bot_msg = await perform_autorclone(dest_path, f"Series/{series_name}/{season_folder}", status_msg, user_id=user_id)
                 

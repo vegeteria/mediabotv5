@@ -1,3 +1,4 @@
+from pyrogram.types import LinkPreviewOptions
 import pyrogram
 from pyrogram.enums import ParseMode
 import asyncio
@@ -151,7 +152,7 @@ async def probe_and_show_options(client, status_msg, state):
         text=text,
         reply_markup=get_track_keyboard(state),
         parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True
+        link_preview_options=LinkPreviewOptions(is_disabled=True)
     )
 
 async def run_process_with_progress(cmd, status_msg, process_type, filename, duration_secs=0, title=None, user_id=None):
@@ -372,7 +373,7 @@ async def handle_dd_callback(client: Client, query: CallbackQuery):
                 if "filepath" not in state:
                     from bot.config import get_base_url
                     dashboard_link = f"{get_base_url()}/dashboard"
-                    await query.edit_message_text(f"📥 Starting download...\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{state.get('task_id')}`", parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+                    await query.edit_message_text(f"📥 Starting download...\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{state.get('task_id')}`", parse_mode=ParseMode.MARKDOWN, link_preview_options=LinkPreviewOptions(is_disabled=True))
                     url = state["url"]
                     dl_type = state["type"]
                     unorganized_dir = BASE_MOVIES / ".unorganized" if dl_type == "movie" else BASE_SERIES / ".unorganized"
@@ -434,7 +435,7 @@ async def handle_dd_callback(client: Client, query: CallbackQuery):
                                 text=f"🎧 Download complete! Select audio tracks to convert to Stereo:\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{state.get('task_id')}`",
                                 reply_markup=get_track_keyboard(state),
                                 parse_mode=ParseMode.MARKDOWN,
-                                disable_web_page_preview=True
+                                link_preview_options=LinkPreviewOptions(is_disabled=True)
                             )
                             return
                     except Exception:
@@ -846,7 +847,7 @@ async def handle_direct_link_probe(message, user_id, url, dl_type):
                     text=f"🎧 Select audio tracks to convert to Stereo:\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{state['task_id']}`",
                     reply_markup=get_track_keyboard(state),
                     parse_mode=ParseMode.MARKDOWN,
-                    disable_web_page_preview=True
+                    link_preview_options=LinkPreviewOptions(is_disabled=True)
                 )
                 return
         except Exception as e:
@@ -950,7 +951,7 @@ async def prompt_audio_tracks_for_extracted(extract_dir, state, status_msg):
                 f"🎧 Select audio tracks to convert to Stereo (based on `{first_video.name}`):\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{state.get('task_id')}`",
                 reply_markup=get_track_keyboard(state),
                 parse_mode=ParseMode.MARKDOWN,
-                disable_web_page_preview=True
+                link_preview_options=LinkPreviewOptions(is_disabled=True)
             )
             return True
         else:
