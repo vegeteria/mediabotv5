@@ -14,8 +14,7 @@ if not API_KEY:
     exit(1)
 
 HEADERS = {
-    'X-Emby-Token': API_KEY,
-    'Authorization': f'MediaBrowser Client="AutoMerger", Device="Script", Version="2.0", Token="{API_KEY}"',
+    'Authorization': f'MediaBrowser Token="{API_KEY}", Client="AutoMerger", Device="Script", DeviceId="AutoMerger123", Version="2.0"',
     'Content-Type': 'application/json'
 }
 

@@ -73,7 +73,9 @@ async def _debounced_merger_loop():
 
     import os
     jf_url = os.getenv("JELLYFIN_URL", "http://localhost:8096").rstrip('/')
-    headers = {'X-Emby-Token': JELLYFIN_API_KEY}
+    headers = {
+        'Authorization': f'MediaBrowser Token="{JELLYFIN_API_KEY}", Client="MediaBot", Device="Script", DeviceId="Bot123", Version="5.1.0"'
+    }
     
     poll_attempts = 0
     while poll_attempts < 60:
@@ -174,9 +176,12 @@ async def refresh_jellyfin(telegram_msg=None, target_dir=None, recursive="true")
         timeout = aiohttp.ClientTimeout(total=5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             from bot.config import JELLYFIN_URL
-            url = f"{JELLYFIN_URL}/Library/Refresh?api_key={JELLYFIN_API_KEY}"
+            url = f"{JELLYFIN_URL}/Library/Refresh"
+            headers = {
+                'Authorization': f'MediaBrowser Token="{JELLYFIN_API_KEY}", Client="MediaBot", Device="Script", DeviceId="Bot123", Version="5.1.0"'
+            }
             logger.info("Triggering Jellyfin global library refresh...")
-            async with session.post(url) as response:
+            async with session.post(url, headers=headers) as response:
                 if response.status in (200, 204):
                     logger.info("Jellyfin library refresh invoked successfully.")
                 else:

@@ -191,6 +191,9 @@ https://example.com/part3.rar
 
 ## Changelog
 
+### v5.1.1 - Jellyfin 12.0+ API Authentication Fix
+* **Jellyfin Authentication**: Upgraded API authentication to comply with Jellyfin 12.0+ security standards. Replaced the deprecated `X-Emby-Token` headers and `?api_key=` URL parameters with the standardized `Authorization: MediaBrowser` header scheme for both library refreshing and the auto-merger script.
+
 ### v5.1.0 - Complete Spotify Interactive UI Refactor
 * **Beets/Acoustid Removal**: Removed all dependencies on `beets`, `pyacoustid`, and `libchromaprint`.
 * **Interactive Tagging**: Replaced automatic fingerprinting with a gorgeous, highly interactive Kurigram paginated UI that queries the Spotify API directly.
