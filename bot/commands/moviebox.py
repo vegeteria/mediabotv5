@@ -1252,7 +1252,7 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
             parse_mode=ParseMode.HTML,
             
         )
-        USER_STATES[user_id]["grid_msg_id"] = query.message.message_id
+        USER_STATES[user_id]["grid_msg_id"] = query.message.id
         USER_STATES[user_id]["grid_chat_id"] = query.message.chat.id
         
     # ── series episode toggle ───────────────────────────────────────────

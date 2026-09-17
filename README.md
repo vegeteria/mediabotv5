@@ -191,6 +191,10 @@ https://example.com/part3.rar
 
 ## Changelog
 
+### v5.1.2 - Pyrogram v2 Breaking Changes Fixes
+* **Link Previews Fixed**: Replaced the deprecated `disable_web_page_preview=True` parameter with the new `link_preview_options=LinkPreviewOptions(is_disabled=True)` syntax across the entire codebase to fix the `unexpected keyword argument` crash during media processing.
+* **Moviebox Pagination Fix**: Fixed a lingering python-telegram-bot migration bug where `query.message.message_id` was used instead of Pyrogram's `query.message.id`, preventing AttributeError crashes during UI interactions.
+
 ### v5.1.1 - Jellyfin 12.0+ API Authentication Fix
 * **Jellyfin Authentication**: Upgraded API authentication to comply with Jellyfin 12.0+ security standards. Replaced the deprecated `X-Emby-Token` headers and `?api_key=` URL parameters with the standardized `Authorization: MediaBrowser` header scheme for both library refreshing and the auto-merger script.
 
