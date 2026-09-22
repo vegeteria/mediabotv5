@@ -119,6 +119,54 @@ async def stream(request):
             
         return web.json_response({"streams": streams})
 
+PREFETCH_CACHE = {}
+
+async def prefetch_chunks(session, current_url, headers):
+    import re
+    match = re.search(r'(\d+)\.m4s$', current_url)
+    if not match:
+        return
+        
+    current_num_str = match.group(1)
+    current_num = int(current_num_str)
+    
+    tasks = []
+    # Prefetch next 8 chunks concurrently
+    for i in range(current_num + 1, current_num + 9):
+        next_num_str = str(i).zfill(len(current_num_str))
+        next_url = current_url[:match.start(1)] + next_num_str + ".m4s"
+        
+        if next_url not in PREFETCH_CACHE:
+            PREFETCH_CACHE[next_url] = asyncio.Future()
+            tasks.append(fetch_chunk(session, next_url, headers))
+            
+    if tasks:
+        asyncio.create_task(asyncio.gather(*tasks, return_exceptions=True))
+
+async def fetch_chunk(session, url, headers):
+    try:
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.read()
+                future = PREFETCH_CACHE.get(url)
+                if isinstance(future, asyncio.Future) and not future.done():
+                    future.set_result((dict(resp.headers), data))
+                else:
+                    PREFETCH_CACHE[url] = (dict(resp.headers), data)
+            else:
+                PREFETCH_CACHE.pop(url, None)
+    except Exception as e:
+        future = PREFETCH_CACHE.get(url)
+        if isinstance(future, asyncio.Future) and not future.done():
+            future.set_exception(e)
+        PREFETCH_CACHE.pop(url, None)
+
+    # Clean up old cache to prevent memory leaks (keep ~50 items = ~100MB)
+    if len(PREFETCH_CACHE) > 100:
+        keys = list(PREFETCH_CACHE.keys())[:-50]
+        for k in keys:
+            PREFETCH_CACHE.pop(k, None)
+
 async def proxy(request):
     encoded_data = request.match_info['data']
     path = request.match_info.get('path', '')
@@ -131,7 +179,6 @@ async def proxy(request):
     target_url = proxy_data["u"]
     target_headers = proxy_data.get("h", {})
     
-    # Resolve relative chunk paths requested by Stremio
     if path and path not in ("stream.mpd", "stream.mp4"):
         from urllib.parse import urljoin
         target_url = urljoin(target_url, path)
@@ -144,8 +191,30 @@ async def proxy(request):
     proxy_base_url = f"{scheme}://{host}"
     
     session = request.app['client']
-    async with session.get(target_url, headers=target_headers) as resp:
+    
+    # Handle Cache Hit
+    if target_url in PREFETCH_CACHE:
+        cached = PREFETCH_CACHE[target_url]
+        try:
+            if isinstance(cached, asyncio.Future):
+                resp_headers, data = await cached
+            else:
+                resp_headers, data = cached
+                
+            resp_headers.pop("Transfer-Encoding", None)
+            resp_headers.pop("Content-Encoding", None)
+            resp_headers["Access-Control-Allow-Origin"] = "*"
+            
+            asyncio.create_task(prefetch_chunks(session, target_url, target_headers))
+            return web.Response(status=200, headers=resp_headers, body=data)
+        except Exception:
+            pass # fallback to direct fetch
+            
+    # Trigger prefetch for upcoming chunks
+    if target_url.endswith(".m4s"):
+        asyncio.create_task(prefetch_chunks(session, target_url, target_headers))
         
+    async with session.get(target_url, headers=target_headers) as resp:
         headers = dict(resp.headers)
         headers.pop("Transfer-Encoding", None)
         headers.pop("Content-Encoding", None)
@@ -159,17 +228,13 @@ async def proxy(request):
             https_prefix = f"https://{target_host}/"
             http_prefix = f"http://{target_host}/"
             
-            # Make sure we route chunks back to the proxy!
-            # Since DASH chunks don't have our encoded headers natively, we need to pass the same encoded data block in the path!
             proxy_https = f"{proxy_base_url}/chunk/{encoded_data}/https/{target_host}/"
             proxy_http = f"{proxy_base_url}/chunk/{encoded_data}/http/{target_host}/"
             
             rewritten = body.replace(https_prefix, proxy_https).replace(http_prefix, proxy_http)
-            
             headers["Content-Length"] = str(len(rewritten))
             return web.Response(body=rewritten, headers=headers, status=resp.status)
             
-        # For MP4s or raw chunks, stream it directly
         response = web.StreamResponse(status=resp.status, headers=headers)
         await response.prepare(request)
         async for chunk in resp.content.iter_chunked(64 * 1024):
@@ -195,6 +260,27 @@ async def chunk_proxy(request):
         target_headers["Range"] = request.headers["Range"]
         
     session = request.app['client']
+    
+    if target_url in PREFETCH_CACHE:
+        cached = PREFETCH_CACHE[target_url]
+        try:
+            if isinstance(cached, asyncio.Future):
+                resp_headers, data = await cached
+            else:
+                resp_headers, data = cached
+                
+            resp_headers.pop("Transfer-Encoding", None)
+            resp_headers.pop("Content-Encoding", None)
+            resp_headers["Access-Control-Allow-Origin"] = "*"
+            
+            asyncio.create_task(prefetch_chunks(session, target_url, target_headers))
+            return web.Response(status=200, headers=resp_headers, body=data)
+        except Exception:
+            pass
+            
+    if target_url.endswith(".m4s"):
+        asyncio.create_task(prefetch_chunks(session, target_url, target_headers))
+        
     async with session.get(target_url, headers=target_headers) as resp:
         headers = dict(resp.headers)
         headers.pop("Transfer-Encoding", None)
