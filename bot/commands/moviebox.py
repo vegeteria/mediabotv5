@@ -258,7 +258,9 @@ async def _start_download(query, user_id, state):
         python_bin = sys.executable
         
     script_path = str(Path(__file__).parent.parent / "rust_moviebox.py")
-    cmd = [python_bin, script_path, "--id", str(state.get("search_id")), "--title", title]
+    details = state.get("details")
+    item_id = getattr(details, "id", getattr(details, "subject_id", getattr(details, "subjectId", state.get("search_id"))))
+    cmd = [python_bin, script_path, "--id", str(item_id), "--title", title]
     
     unique_id = str(uuid.uuid4())[:8]
     target_dir = BASE_MOVIES / unique_id if state["type"] == "movie" else BASE_SERIES / unique_id
