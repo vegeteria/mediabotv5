@@ -91,6 +91,7 @@ async def stream(request):
         if res.status_code != 200:
             return web.json_response({"streams": []})
             
+        data = res.json().get("data", {})
         mb_items = find_moviebox_item(data, title, year, type_)
         
         if not mb_items:
