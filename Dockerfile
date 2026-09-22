@@ -1,3 +1,10 @@
+FROM rust:1-slim AS rust-builder
+WORKDIR /usr/src
+COPY moviebox-tui moviebox-tui
+COPY moviebox-server moviebox-server
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+RUN cd moviebox-server && cargo build --release
+
 FROM python:3.12.8-slim
 
 # Install system dependencies (curl and 7zip)
@@ -21,6 +28,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir uv && \
     uv pip install --system /moviebox-api[cli] && \
     uv pip install --system -r requirements.txt
+
+# Copy the Rust binary
+COPY --from=rust-builder /usr/src/moviebox-server/target/release/moviebox-server /usr/local/bin/moviebox-server
 
 # Copy the bot code
 COPY media_bot.py .

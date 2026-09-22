@@ -12,6 +12,7 @@ import logging
 from pyrogram import idle
 from bot.config import BOT_TOKEN, API_ID, API_HASH, USER_SESSION_STRING, OWNER_ID, BASE_MOVIES, BASE_SERIES, BASE_SONGS, logger
 from bot.web_server import start_web_server
+import subprocess
 from bot.clients import bot_app as app, user_app
 
 async def main():
@@ -32,6 +33,15 @@ async def main():
     BASE_SERIES.mkdir(parents=True, exist_ok=True)
     BASE_SONGS.mkdir(parents=True, exist_ok=True)
 
+    # Start the Rust API Server
+    logger.info("Starting MovieBox Rust API Server...")
+    import os
+    server_dir = os.path.join(os.path.dirname(__file__), "moviebox-server")
+    if os.path.exists("/usr/local/bin/moviebox-server"):
+        subprocess.Popen(["moviebox-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        subprocess.Popen(["cargo", "run", "--release"], cwd=server_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
     # Start the web server
     logger.info("Starting web server...")
     await start_web_server()

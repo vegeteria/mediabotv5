@@ -51,3 +51,7 @@ htmlcov/
 # Runtime data (pending deep-link store, etc.)
 data/
 *.part
+
+moviebox-server/target/
+
+moviebox-server/target/
