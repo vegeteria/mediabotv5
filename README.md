@@ -19,6 +19,7 @@
 | **Series Downloads** | Archive extraction + batch audio/video processing + automatic Season folder organization |
 | **Episode Downloads** | Auto-detect series/season/episode from filenames |
 | **Moviebox Search** | Interactive movie & series search via `/mbmovie` and `/mbseries` |
+| **VLC Direct Streaming** | Get direct Stremio-proxied stream URLs to watch movies and episodes instantly in VLC |
 | **Smart Detection** | Parses `S01E01`, `Season 1`, `1x01` patterns automatically |
 | **Password Archives** | Handles password-protected series archives seamlessly |
 
@@ -190,6 +191,10 @@ https://example.com/part3.rar
 > The `/throttle` setting applies to all direct-link downloads. Downloads via `mbmovie`/`mbseries` are hardcoded to **5 blocks** for server stability.
 
 ## Changelog
+
+### v5.1.4 - Stremio Proxy Integration & VLC Direct Streaming
+* **VLC Direct Streaming**: Added new "▶️ Stream Movie" and "▶️ Stream Selected" buttons for `/mbmovie` and `/mbseries`.
+* **Stremio Integration**: The bot now seamlessly queries the local Rust MovieBox backend to generate proxy URLs pointing to the `stremio_addon.py` instance. This allows instant, buffer-free streaming of MovieBox content (MP4 and DASH) directly from Telegram into VLC!
 
 ### v5.1.3 - MovieBox API Fixes
 * **Dummy Notice Filter**: Ported the Rust project's stream logic to instantly filter and drop any CDN URLs containing the 5.3MB "App Upgrade Notice" video, ensuring only real video streams are returned to the user.

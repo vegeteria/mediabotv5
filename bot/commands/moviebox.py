@@ -202,6 +202,10 @@ async def _start_download(query, user_id, state):
     register_user_task(user_id, asyncio.current_task())
     
 
+    if state.get("action") == "stream":
+        await _generate_stream_url(query, user_id, state)
+        return
+
     title = state["title"]
     quality = state.get("quality", "best")
     dub = state.get("dub_lang")
@@ -927,7 +931,10 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
             kb = []
             
             if cache["type"] == "movie":
-                kb.append([InlineKeyboardButton("📥 Download Movie", callback_data="mbq_best", style=pyrogram.enums.ButtonStyle.SUCCESS)])
+                kb.append([
+                    InlineKeyboardButton("📥 Download Movie", callback_data="mbq_best", style=pyrogram.enums.ButtonStyle.SUCCESS),
+                    InlineKeyboardButton("▶️ Stream Movie", callback_data="mbs_best", style=pyrogram.enums.ButtonStyle.PRIMARY)
+                ])
             else:
                 # Series: We will generate season buttons
                 if details.seasons and details.seasons.total_seasons > 0:
@@ -1260,7 +1267,13 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
             kb.append(ep_row)
             
         if selected:
-            kb.append([InlineKeyboardButton(f"📥 Download Selected ({len(selected)})", callback_data="mb_ep_selected", style=pyrogram.enums.ButtonStyle.SUCCESS)])
+            if len(selected) == 1:
+                kb.append([
+                    InlineKeyboardButton(f"📥 Download Selected (1)", callback_data="mb_ep_selected", style=pyrogram.enums.ButtonStyle.SUCCESS),
+                    InlineKeyboardButton(f"▶️ Stream Selected", callback_data="mbs_ep_selected", style=pyrogram.enums.ButtonStyle.PRIMARY)
+                ])
+            else:
+                kb.append([InlineKeyboardButton(f"📥 Download Selected ({len(selected)})", callback_data="mb_ep_selected", style=pyrogram.enums.ButtonStyle.SUCCESS)])
         kb.append([InlineKeyboardButton("📥 Download Full Season", callback_data="mb_ep_all", style=pyrogram.enums.ButtonStyle.SUCCESS)])
         kb.append([
             InlineKeyboardButton("⬅️ Back to Seasons", callback_data=USER_STATES[user_id].get('cb_data', 'expired'), style=pyrogram.enums.ButtonStyle.PRIMARY),
@@ -1295,6 +1308,30 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
 
 
     # ── quality selection → dub selection ───────────────────────────────
+    elif query.data.startswith("mbs_"):
+        if not check_concurrency_limit(user_id):
+            await query.edit_message_text("❌ You already have an active process. Please wait or use /cancel.")
+            return
+
+        if user_id not in USER_STATES:
+            await query.edit_message_text("❌ Session expired.")
+            return
+
+        action_val = query.data.replace("mbs_", "")
+        state = USER_STATES[user_id]
+        state["action"] = "stream"
+        
+        if action_val == "best":
+            state["quality"] = "best"
+            await check_dubs_and_download(query, user_id, state)
+        elif action_val == "ep_selected":
+            state["scope"] = "selected"
+            state["quality"] = "best"
+            selected = sorted(list(state.get("selected_episodes", [])))
+            if not selected:
+                return
+            await check_dubs_and_download(query, user_id, state)
+
     elif query.data.startswith("mbq_"):
         if not check_concurrency_limit(user_id):
             await query.edit_message_text("❌ You already have an active process. Please wait or use /cancel.")
@@ -1370,3 +1407,82 @@ async def inline_query(client, message):
         await inline_query.answer(inline_results)
     except Exception:
         pass
+
+async def _generate_stream_url(query, user_id, state):
+    title = state.get("title", "Unknown")
+    details = state.get("details")
+    item_id = getattr(details, "id", getattr(details, "subject_id", getattr(details, "subjectId", state.get("search_id"))))
+    
+    season = 0
+    episode = 0
+    if state["type"] == "series":
+        season = state.get("season", 1)
+        if state.get("scope") == "selected":
+            selected = sorted(list(state.get("selected_episodes", [])))
+            episode = selected[0] if selected else 1
+        else:
+            episode = state.get("episode", 1)
+            
+    import os, aiohttp, base64, json
+    from pyrogram.enums import ParseMode
+    from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    mb_port = os.environ.get("MB_PORT", "8000")
+    stream_url = f"http://localhost:{mb_port}/stream?id={item_id}&season={season}&episode={episode}"
+    
+    try:
+        await query.edit_message_text("⏳ Fetching stream...")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(stream_url) as resp:
+                data = await resp.json()
+                if not data.get("success") or not data.get("data"):
+                    await query.edit_message_text(f"❌ Failed to get stream for {title}")
+                    return
+                
+                target_dub = state.get("dub_lang")
+                best_group = data["data"][0]
+                if target_dub:
+                    for group in data["data"]:
+                        if group.get("lang") == target_dub:
+                            best_group = group
+                            break
+                            
+                mirror = best_group["mirrors"][0]
+                url = mirror["resolver_url"]
+                headers = mirror["headers"]
+                
+                proxy_data = {
+                    "u": url,
+                    "h": {k: v for k, v in headers}
+                }
+                
+                encoded_data = base64.urlsafe_b64encode(json.dumps(proxy_data).encode()).decode()
+                ext = ".mpd" if "dash" in url or ".mpd" in url else ".mp4"
+                
+                from bot.config import WEB_SERVER_URL, WEB_SERVER_PORT
+                stremio_port = os.environ.get("STREMIO_PORT", "8080")
+                
+                base = WEB_SERVER_URL
+                if f":{WEB_SERVER_PORT}" in base:
+                    proxy_base_url = base.replace(f":{WEB_SERVER_PORT}", f":{stremio_port}")
+                elif any(x in base for x in ("127.0.0.1", "localhost", "0.0.0.0", "192.168.")):
+                    proxy_base_url = f"{base}:{stremio_port}"
+                else:
+                    proxy_base_url = f"{base}:{stremio_port}"
+                    
+                proxy_url = f"{proxy_base_url}/proxy/{encoded_data}/stream{ext}"
+                
+                import html
+                title_escaped = html.escape(title)
+                if season > 0:
+                    title_escaped += f" S{season:02d}E{episode:02d}"
+                    
+                await query.edit_message_text(
+                    f"🎬 <b>{title_escaped}</b>\n\n▶️ <b>Stream URL (VLC Compatible):</b>\n<code>{proxy_url}</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ Close", callback_data="mb_cancel")]])
+                )
+    except Exception as e:
+        import logging
+        logging.error(f"Stream generation failed: {e}")
+        await query.edit_message_text("❌ Failed to generate stream URL.")
