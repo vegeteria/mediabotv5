@@ -27,7 +27,7 @@ def find_moviebox_item(data, target_title, target_year, target_type):
         if isinstance(obj, dict):
             if "title" in obj and "subjectId" in obj:
                 title = obj.get("title", "")
-                year = obj.get("releaseDate", "").split("-")[0]
+                year = str(obj.get("releaseDate", ""))[:4]
                 
                 if target_type == "series":
                     if title.lower().startswith(target_title.lower()) and str(year) == str(target_year):
@@ -41,7 +41,15 @@ def find_moviebox_item(data, target_title, target_year, target_type):
             for v in obj:
                 search_obj(v)
     search_obj(data)
-    return found[0] if found else None
+    
+    # Deduplicate by subjectId
+    unique = []
+    seen = set()
+    for item in found:
+        if item["subjectId"] not in seen:
+            seen.add(item["subjectId"])
+            unique.append(item)
+    return unique
 
 async def manifest(request):
     return web.json_response({
@@ -76,51 +84,57 @@ async def stream(request):
         return web.json_response({"streams": []})
         
     if type_ == "series":
-        year = str(year).split("-")[0]
+        year = str(year)[:4]
         
     async with httpx.AsyncClient() as client:
         res = await client.get(f"{MB_SERVER}/search?q={title}")
         if res.status_code != 200:
             return web.json_response({"streams": []})
             
-        data = res.json().get("data", {})
-        mb_item = find_moviebox_item(data, title, year, type_)
+        mb_items = find_moviebox_item(data, title, year, type_)
         
-        if not mb_item:
+        if not mb_items:
             return web.json_response({"streams": []})
             
-        mb_id = mb_item["subjectId"]
-        
-        s_res = await client.get(f"{MB_SERVER}/stream?id={mb_id}&season={season}&episode={episode}")
-        if s_res.status_code != 200:
-            return web.json_response({"streams": []})
-            
-        s_data = s_res.json().get("data", [])
-        streams = []
-        
         scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
         host = request.headers.get("X-Forwarded-Host", request.host)
         proxy_base_url = f"{scheme}://{host}"
         
-        for s in s_data:
-            url = s["mirrors"][0]["resolver_url"]
-            headers = s["mirrors"][0]["headers"]
+        streams = []
+        for mb_item in mb_items:
+            mb_id = mb_item["subjectId"]
+            item_title = mb_item.get("title", "MovieBox")
             
-            # Encode target info
-            proxy_data = {
-                "u": url,
-                "h": {k: v for k, v in headers}
-            }
-            encoded_data = base64.urlsafe_b64encode(json.dumps(proxy_data).encode()).decode()
-            
-            ext = ".mpd" if "dash" in url or ".mpd" in url else ".mp4"
-            proxy_url = f"{proxy_base_url}/proxy/{encoded_data}/stream{ext}"
-            
-            streams.append({
-                "name": "MovieBox",
-                "title": f"{s.get('resolution', 'Unknown')} - {round(s.get('size_bytes', 0)/1024/1024, 1)} MB",
-                "url": proxy_url
-            })
+            s_res = await client.get(f"{MB_SERVER}/stream?id={mb_id}&season={season}&episode={episode}")
+            if s_res.status_code != 200:
+                continue
+                
+            s_data = s_res.json().get("data", [])
+            for s in s_data:
+                url = s["mirrors"][0]["resolver_url"]
+                headers = s["mirrors"][0]["headers"]
+                
+                proxy_data = {
+                    "u": url,
+                    "h": {k: v for k, v in headers}
+                }
+                encoded_data = base64.urlsafe_b64encode(json.dumps(proxy_data).encode()).decode()
+                
+                ext = ".mpd" if "dash" in url or ".mpd" in url else ".mp4"
+                proxy_url = f"{proxy_base_url}/proxy/{encoded_data}/stream{ext}"
+                
+                # If there are dub tags like [Hindi], include them in the stream name
+                disp_name = "MovieBox"
+                import re
+                tags = re.findall(r'\[(.*?)\]', item_title)
+                if tags:
+                    disp_name = f"MovieBox ({', '.join(tags)})"
+                
+                streams.append({
+                    "name": disp_name,
+                    "title": f"{s.get('resolution', 'Unknown')} - {round(s.get('size_bytes', 0)/1024/1024, 1)} MB",
+                    "url": proxy_url
+                })
             
         return web.json_response({"streams": streams})
 
