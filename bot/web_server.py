@@ -562,13 +562,46 @@ async def handle_logo(request):
 
 async def start_web_server():
     app = web.Application()
+    
+    # Setup Stremio client session
+    import aiohttp
+    async def on_startup(app):
+        app['client'] = aiohttp.ClientSession()
+    async def on_cleanup(app):
+        await app['client'].close()
+    app.on_startup.append(on_startup)
+    app.on_cleanup.append(on_cleanup)
+
+    from stremio_addon import manifest, stream, proxy, chunk_proxy
+    
     app.add_routes([
         web.get('/info/{uuid}', handle_info),
         web.get('/api/tasks', api_tasks),
         web.get('/dashboard', handle_dashboard),
         web.get('/logo.svg', handle_logo),
-        web.get('/favicon.ico', handle_logo)
+        web.get('/favicon.ico', handle_logo),
+        
+        # Stremio Addon routes
+        web.get('/manifest.json', manifest),
+        web.get('/stream/{type}/{id}.json', stream),
+        web.get('/proxy/{data}/{path:.*}', proxy),
+        web.get('/chunk/{data}/{scheme}/{host}/{path:.*}', chunk_proxy),
     ])
+    
+    try:
+        import aiohttp_cors
+        cors = aiohttp_cors.setup(app, defaults={
+            "*": aiohttp_cors.ResourceOptions(
+                allow_credentials=True,
+                expose_headers="*",
+                allow_headers="*",
+            )
+        })
+        for route in list(app.router.routes()):
+            cors.add(route)
+    except ImportError:
+        pass
+
     runner = web.AppRunner(app)
     await runner.setup()
     

@@ -1465,14 +1465,10 @@ async def _generate_stream_url(query, user_id, state):
                 if proxy_base_url:
                     proxy_base_url = proxy_base_url.rstrip("/")
                 else:
-                    stremio_port = os.environ.get("STREMIO_PORT", "8080")
-                    base = WEB_SERVER_URL
-                    if f":{WEB_SERVER_PORT}" in base:
-                        proxy_base_url = base.replace(f":{WEB_SERVER_PORT}", f":{stremio_port}")
-                    elif any(x in base for x in ("127.0.0.1", "localhost", "0.0.0.0", "192.168.")):
-                        proxy_base_url = f"{base}:{stremio_port}"
-                    else:
-                        proxy_base_url = f"{base}:{stremio_port}"
+                    # Now that stremio_addon routes are merged into the main web server, 
+                    # we just use WEB_SERVER_URL directly.
+                    from bot.config import get_base_url
+                    proxy_base_url = get_base_url().rstrip("/")
                         
                 proxy_url = f"{proxy_base_url}/proxy/{encoded_data}/stream{ext}"
                 
