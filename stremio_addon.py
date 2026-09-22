@@ -30,7 +30,10 @@ def find_moviebox_item(data, target_title, target_year, target_type):
                 year = str(obj.get("releaseDate", ""))[:4]
                 
                 if target_type == "series":
-                    if title.lower().startswith(target_title.lower()) and str(year) == str(target_year):
+                    import re
+                    clean_title = re.sub(r'\s+s\d+', '', title.lower())
+                    clean_title = re.sub(r'\[.*?\]', '', clean_title).strip()
+                    if clean_title == target_title.lower():
                         found.append(obj)
                 else:
                     if title.lower() == target_title.lower() and str(year) == str(target_year):
