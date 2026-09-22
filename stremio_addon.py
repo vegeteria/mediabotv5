@@ -114,6 +114,26 @@ async def stream(request):
                 continue
                 
             s_data = s_res.json().get("data", [])
+            if not s_data:
+                continue
+                
+            # Fetch subtitles for this stream group
+            resource_id = s_data[0].get("resource_id", "")
+            subtitles = []
+            if resource_id:
+                try:
+                    c_res = await client.get(f"{MB_SERVER}/captions?id={mb_id}&season={season}&episode={episode}&resource_id={resource_id}")
+                    if c_res.status_code == 200:
+                        caps = c_res.json().get("data", {}).get("extCaptions", [])
+                        for i, cap in enumerate(caps):
+                            subtitles.append({
+                                "id": f"{mb_id}_sub_{i}",
+                                "lang": cap.get("lanName", cap.get("lan", "eng")),
+                                "url": cap.get("url")
+                            })
+                except Exception:
+                    pass
+                    
             for s in s_data:
                 url = s["mirrors"][0]["resolver_url"]
                 headers = s["mirrors"][0]["headers"]
@@ -127,18 +147,22 @@ async def stream(request):
                 ext = ".mpd" if "dash" in url or ".mpd" in url else ".mp4"
                 proxy_url = f"{proxy_base_url}/proxy/{encoded_data}/stream{ext}"
                 
-                # If there are dub tags like [Hindi], include them in the stream name
                 disp_name = "MovieBox"
                 import re
                 tags = re.findall(r'\[(.*?)\]', item_title)
                 if tags:
                     disp_name = f"MovieBox ({', '.join(tags)})"
                 
-                streams.append({
+                stream_dict = {
                     "name": disp_name,
                     "title": f"{s.get('resolution', 'Unknown')} - {round(s.get('size_bytes', 0)/1024/1024, 1)} MB",
                     "url": proxy_url
-                })
+                }
+                
+                if subtitles:
+                    stream_dict["subtitles"] = subtitles
+                    
+                streams.append(stream_dict)
             
         return web.json_response({"streams": streams})
 
