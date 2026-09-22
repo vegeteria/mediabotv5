@@ -192,6 +192,7 @@ https://example.com/part3.rar
 ## Changelog
 
 ### v5.1.3 - MovieBox API Fixes
+* **Dummy Notice Filter**: Ported the Rust project's stream logic to instantly filter and drop any CDN URLs containing the 5.3MB "App Upgrade Notice" video, ensuring only real video streams are returned to the user.
 * **API Authentication & Spoofing Fixes**: Fixed a critical bug in the underlying `moviebox-api` backend where `X-Client-Token` was incorrectly generating timestamps in seconds instead of milliseconds, causing API rejection.
 * **IP Banning Fix**: Implemented dynamic Indian IP spoofing via the `x-forwarded-for` header to bypass regional blocks and rate-limiting.
 * **Device Spoofing Update**: Upgraded the spoofed Android app profile to the latest versions (`50020117..50020121` / `4.0.01.0813.03`) and set the API payload region to `US` to restore full global content access.

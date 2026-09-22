@@ -131,6 +131,23 @@ class RootDownloadableFilesDetailModel(BaseModel):
     def title(self) -> str:
         return self.subject_title
 
+    @field_validator("list", mode="after")
+    @classmethod
+    def filter_deprecation_notices(cls, v: list[VideoFileMetadata]) -> list[VideoFileMetadata]:
+        valid_items = []
+        for item in v:
+            url_lower = str(item.resource_link).lower()
+            if any(marker in url_lower for marker in (
+                "1c7de0bd3393702d9191801f15f88f8d",
+                "9a0461bc39da389663bf3dbb17091d3f",
+                "b164fbfb4347792950bdfbfb563d39d9",
+                "/notice.mp4",
+                "notice",
+            )) or ("macdn.aoneroom.com" in url_lower and "/other/" in url_lower):
+                continue
+            valid_items.append(item)
+        return valid_items
+
     @field_validator("genre", mode="before")
     @classmethod
     def split_genre(cls, v):
