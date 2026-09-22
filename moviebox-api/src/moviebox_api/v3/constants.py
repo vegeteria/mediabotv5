@@ -57,7 +57,7 @@ def _generate_client_info() -> tuple[str, str]:
         {"model": "M2012K11AG", "brand": "Redmi"},
         {"model": "M2007J20CG", "brand": "Redmi"},
     ]
-    version_codes = [50020117, 50020118, 50020119, 50020120, 50020121]
+    version_codes = [50020121, 50020122, 50020123, 50020124, 50020125]
     network_types = ["NETWORK_WIFI", "NETWORK_MOBILE"]
     timezones = [
         "Asia/Kolkata",
@@ -81,7 +81,7 @@ def _generate_client_info() -> tuple[str, str]:
         f"{device['model']}; Build/{android['build']}; Cronet/135.0.7012.3)"
     )
     client_info = (
-        f'{{"package_name":"com.community.oneroom","version_name":"4.0.01.0813.03",'
+        f'{{"package_name":"com.community.oneroom","version_name":"4.0.02.0831.03",'
         f'"version_code":{version_code},"os":"android","os_version":"{android["version"]}",'
         f'"install_ch":"ps","device_id":"{device_id}","install_store":"ps",'
         f'"gaid":"{gaid}","brand":"{device["brand"]}","model":"{device["model"]}",'
