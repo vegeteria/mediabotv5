@@ -21,15 +21,20 @@ async def fetch_cinemeta(type_, id_):
             return res.json().get("meta")
     return None
 
-def find_moviebox_item(data, target_title, target_year):
+def find_moviebox_item(data, target_title, target_year, target_type):
     found = []
     def search_obj(obj):
         if isinstance(obj, dict):
             if "title" in obj and "subjectId" in obj:
                 title = obj.get("title", "")
                 year = obj.get("releaseDate", "").split("-")[0]
-                if title.lower() == target_title.lower() and str(year) == str(target_year):
-                    found.append(obj)
+                
+                if target_type == "series":
+                    if title.lower().startswith(target_title.lower()) and str(year) == str(target_year):
+                        found.append(obj)
+                else:
+                    if title.lower() == target_title.lower() and str(year) == str(target_year):
+                        found.append(obj)
             for v in obj.values():
                 search_obj(v)
         elif isinstance(obj, list):
@@ -79,7 +84,7 @@ async def stream(request):
             return web.json_response({"streams": []})
             
         data = res.json().get("data", {})
-        mb_item = find_moviebox_item(data, title, year)
+        mb_item = find_moviebox_item(data, title, year, type_)
         
         if not mb_item:
             return web.json_response({"streams": []})
