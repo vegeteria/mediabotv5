@@ -143,9 +143,8 @@ async def proxy(request):
     host = request.headers.get("X-Forwarded-Host", request.host)
     proxy_base_url = f"{scheme}://{host}"
     
-    import aiohttp
-    async with aiohttp.ClientSession() as session:
-        resp = await session.get(target_url, headers=target_headers)
+    session = request.app['client']
+    async with session.get(target_url, headers=target_headers) as resp:
         
         headers = dict(resp.headers)
         headers.pop("Transfer-Encoding", None)
@@ -195,9 +194,8 @@ async def chunk_proxy(request):
     if "Range" in request.headers:
         target_headers["Range"] = request.headers["Range"]
         
-    import aiohttp
-    async with aiohttp.ClientSession() as session:
-        resp = await session.get(target_url, headers=target_headers)
+    session = request.app['client']
+    async with session.get(target_url, headers=target_headers) as resp:
         headers = dict(resp.headers)
         headers.pop("Transfer-Encoding", None)
         headers.pop("Content-Encoding", None)
@@ -211,6 +209,17 @@ async def chunk_proxy(request):
         return response
 
 app = web.Application()
+
+async def on_startup(app):
+    import aiohttp
+    app['client'] = aiohttp.ClientSession()
+
+async def on_cleanup(app):
+    await app['client'].close()
+
+app.on_startup.append(on_startup)
+app.on_cleanup.append(on_cleanup)
+
 cors = aiohttp_cors.setup(app, defaults={
     "*": aiohttp_cors.ResourceOptions(
         allow_credentials=True,
