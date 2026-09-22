@@ -40,14 +40,14 @@ async def main():
     if os.path.exists("/usr/local/bin/moviebox-server"):
         subprocess.Popen(["moviebox-server"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         # Also start Stremio addon
-        subprocess.Popen([sys.executable, "stremio_addon.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen([sys.executable, "stremio_addon.py"])
     else:
         # Developer mode fallback
         moviebox_tui_path = os.path.join(os.path.dirname(__file__), "moviebox-server")
         if os.path.exists(moviebox_tui_path):
-            subprocess.Popen(["cargo", "run", "--release"], cwd=moviebox_tui_path, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen(["cargo", "run", "--release"], cwd=moviebox_tui_path)
         if os.path.exists("stremio_addon.py"):
-            subprocess.Popen([sys.executable, "stremio_addon.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.Popen([sys.executable, "stremio_addon.py"])
     
     # Start the web server
     logger.info("Starting web server...")
