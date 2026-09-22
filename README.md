@@ -50,6 +50,7 @@
    CLOUD_LINK_BASE=https://...       # Your Direct Cloud Link Base URL
    WEB_SERVER_URL=https://movie.com  # (Optional) Your Caddy-proxied domain for Web UI
    WEB_SERVER_PORT=8080              # (Optional) Port for the internal Web UI (default 8080)
+   STREMIO_PROXY_URL=https://stremio.movie.com # (Optional) Define exact Stremio proxy URL (bypasses port auto-detection)
    API_ID=your_api_id                # (Optional) For 2GB+ Telegram downloads
    API_HASH=your_api_hash            # (Optional) For 2GB+ Telegram downloads
    USER_SESSION_STRING=your_string   # (Optional) Pyrogram session string for 2GB+ downloads

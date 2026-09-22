@@ -1460,16 +1460,20 @@ async def _generate_stream_url(query, user_id, state):
                 ext = ".mpd" if "dash" in url or ".mpd" in url else ".mp4"
                 
                 from bot.config import WEB_SERVER_URL, WEB_SERVER_PORT
-                stremio_port = os.environ.get("STREMIO_PORT", "8080")
                 
-                base = WEB_SERVER_URL
-                if f":{WEB_SERVER_PORT}" in base:
-                    proxy_base_url = base.replace(f":{WEB_SERVER_PORT}", f":{stremio_port}")
-                elif any(x in base for x in ("127.0.0.1", "localhost", "0.0.0.0", "192.168.")):
-                    proxy_base_url = f"{base}:{stremio_port}"
+                proxy_base_url = os.environ.get("STREMIO_PROXY_URL")
+                if proxy_base_url:
+                    proxy_base_url = proxy_base_url.rstrip("/")
                 else:
-                    proxy_base_url = f"{base}:{stremio_port}"
-                    
+                    stremio_port = os.environ.get("STREMIO_PORT", "8080")
+                    base = WEB_SERVER_URL
+                    if f":{WEB_SERVER_PORT}" in base:
+                        proxy_base_url = base.replace(f":{WEB_SERVER_PORT}", f":{stremio_port}")
+                    elif any(x in base for x in ("127.0.0.1", "localhost", "0.0.0.0", "192.168.")):
+                        proxy_base_url = f"{base}:{stremio_port}"
+                    else:
+                        proxy_base_url = f"{base}:{stremio_port}"
+                        
                 proxy_url = f"{proxy_base_url}/proxy/{encoded_data}/stream{ext}"
                 
                 import html
