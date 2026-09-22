@@ -218,4 +218,5 @@ cors.add(app.router.add_get('/proxy/{data}/{filename}', proxy))
 cors.add(app.router.add_get('/chunk/{data}/{scheme}/{host}/{path:.*}', chunk_proxy))
 
 if __name__ == '__main__':
-    web.run_app(app, host='0.0.0.0', port=8080)
+    port = int(os.environ.get("STREMIO_PORT", 8080))
+    web.run_app(app, host='0.0.0.0', port=port)
