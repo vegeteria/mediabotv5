@@ -57,7 +57,7 @@ def _generate_client_info() -> tuple[str, str]:
         {"model": "M2012K11AG", "brand": "Redmi"},
         {"model": "M2007J20CG", "brand": "Redmi"},
     ]
-    version_codes = [50020042, 50020043, 50020044, 50020045, 50020046]
+    version_codes = [50020117, 50020118, 50020119, 50020120, 50020121]
     network_types = ["NETWORK_WIFI", "NETWORK_MOBILE"]
     timezones = [
         "Asia/Kolkata",
@@ -81,21 +81,17 @@ def _generate_client_info() -> tuple[str, str]:
         f"{device['model']}; Build/{android['build']}; Cronet/135.0.7012.3)"
     )
     client_info = (
-        f'{{"package_name":"com.community.oneroom","version_name":"4.0.02.0831.03",'
+        f'{{"package_name":"com.community.oneroom","version_name":"4.0.01.0813.03",'
         f'"version_code":{version_code},"os":"android","os_version":"{android["version"]}",'
         f'"install_ch":"ps","device_id":"{device_id}","install_store":"ps",'
         f'"gaid":"{gaid}","brand":"{device["brand"]}","model":"{device["model"]}",'
-        f'"system_language":"en","net":"{network}","region":"IN",'
-        f'"timezone":"Asia/Kolkata","sp_code":"40401","X-Play-Mode":"2"}}'
+        f'"system_language":"en","net":"{network}","region":"US",'
+        f'"timezone":"{timezone}","sp_code":"40401","X-Play-Mode":"2"}}'
     )
     return user_agent, client_info
 
 
 USER_AGENT, CLIENT_INFO = _generate_client_info()
-if os.getenv("MOVIEBOX_USER_AGENT"):
-    USER_AGENT = os.getenv("MOVIEBOX_USER_AGENT")
-if os.getenv("MOVIEBOX_CLIENT_INFO"):
-    CLIENT_INFO = os.getenv("MOVIEBOX_CLIENT_INFO")
 
 WEB_USER_AGENT: str = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "

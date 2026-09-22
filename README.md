@@ -191,6 +191,11 @@ https://example.com/part3.rar
 
 ## Changelog
 
+### v5.1.3 - MovieBox API Fixes
+* **API Authentication & Spoofing Fixes**: Fixed a critical bug in the underlying `moviebox-api` backend where `X-Client-Token` was incorrectly generating timestamps in seconds instead of milliseconds, causing API rejection.
+* **IP Banning Fix**: Implemented dynamic Indian IP spoofing via the `x-forwarded-for` header to bypass regional blocks and rate-limiting.
+* **Device Spoofing Update**: Upgraded the spoofed Android app profile to the latest versions (`50020117..50020121` / `4.0.01.0813.03`) and set the API payload region to `US` to restore full global content access.
+
 ### v5.1.2 - Pyrogram v2 Breaking Changes Fixes
 * **Link Previews Fixed**: Replaced the deprecated `disable_web_page_preview=True` parameter with the new `link_preview_options=LinkPreviewOptions(is_disabled=True)` syntax across the entire codebase to fix the `unexpected keyword argument` crash during media processing.
 * **Moviebox Pagination Fix**: Fixed a lingering python-telegram-bot migration bug where `query.message.message_id` was used instead of Pyrogram's `query.message.id`, preventing AttributeError crashes during UI interactions.

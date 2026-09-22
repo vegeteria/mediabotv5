@@ -33,12 +33,12 @@ def b64_encode(data: bytes) -> str:
     return base64.b64encode(data).decode()
 
 
-def generate_x_client_token(timestamp_s: int | None = None) -> str:
+def generate_x_client_token(timestamp_ms: int | None = None) -> str:
     """
     token = "<ts>,<md5(reverse(<ts>))>"
     """
     ts = str(
-        timestamp_s if timestamp_s is not None else int(time.time())
+        timestamp_ms if timestamp_ms is not None else int(time.time() * 1000)
     )
     reversed_ts = ts[::-1]
     hash_val = md5_hex(reversed_ts.encode())
@@ -118,6 +118,17 @@ def generate_x_tr_signature(
     return f"{ts}|2|{sig_b64}"
 
 
+def random_spoofed_ip() -> str:
+    import random
+    prefixes = [
+        "103.241", "49.36", "117.195", "106.198", "122.162", "157.32", "182.70", "103.58", "27.60", "59.90"
+    ]
+    prefix = random.choice(prefixes)
+    c = random.randint(1, 254)
+    d = random.randint(1, 254)
+    return f"{prefix}.{c}.{d}"
+
+
 def build_signed_headers(
     method: str,
     url: str,
@@ -141,12 +152,13 @@ def build_signed_headers(
         "Accept": accept,
         "Content-Type": content_type,
         "Connection": "keep-alive",
-        "X-Client-Token": generate_x_client_token(),
+        "X-Client-Token": generate_x_client_token(ts),
         "x-tr-signature": generate_x_tr_signature(
             method, accept, content_type, url, body, False, ts
         ),
         "X-Client-Info": client_info,
         "X-Client-Status": "0",
+        "x-forwarded-for": random_spoofed_ip(),
     }
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
