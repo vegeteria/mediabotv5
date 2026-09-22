@@ -21,7 +21,9 @@ async def download_item(session, item_id, title, target_dir, season=0, episode=0
         download_url = mirror["resolver_url"]
         headers = mirror["headers"]
         
-        cmd = [sys.executable, "-m", "yt_dlp", "-N", "16", download_url]
+        import os
+        concurrent_fragments = os.environ.get("CONCURRENT_FRAGMENTS", "16")
+        cmd = [sys.executable, "-m", "yt_dlp", "-N", concurrent_fragments, download_url]
         for k, v in headers:
             cmd.extend(["--add-header", f"{k}: {v}"])
         
