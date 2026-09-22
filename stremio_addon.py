@@ -121,6 +121,8 @@ async def stream(request):
 
 async def proxy(request):
     encoded_data = request.match_info['data']
+    path = request.match_info.get('path', '')
+    
     try:
         proxy_data = json.loads(base64.urlsafe_b64decode(encoded_data).decode())
     except:
@@ -128,6 +130,11 @@ async def proxy(request):
         
     target_url = proxy_data["u"]
     target_headers = proxy_data.get("h", {})
+    
+    # Resolve relative chunk paths requested by Stremio
+    if path and path not in ("stream.mpd", "stream.mp4"):
+        from urllib.parse import urljoin
+        target_url = urljoin(target_url, path)
     
     if "Range" in request.headers:
         target_headers["Range"] = request.headers["Range"]
@@ -214,7 +221,7 @@ cors = aiohttp_cors.setup(app, defaults={
 
 cors.add(app.router.add_get('/manifest.json', manifest))
 cors.add(app.router.add_get('/stream/{type}/{id}.json', stream))
-cors.add(app.router.add_get('/proxy/{data}/{filename}', proxy))
+cors.add(app.router.add_get('/proxy/{data}/{path:.*}', proxy))
 # Catch-all route for chunk requests inside the MPD
 cors.add(app.router.add_get('/chunk/{data}/{scheme}/{host}/{path:.*}', chunk_proxy))
 
