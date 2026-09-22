@@ -7,7 +7,8 @@ from pathlib import Path
 import re
 
 async def download_item(session, item_id, title, target_dir, season=0, episode=0):
-    url = f"http://localhost:8000/stream?id={item_id}&season={season}&episode={episode}"
+    mb_port = os.environ.get("MB_PORT", "8000")
+    url = f"http://localhost:{mb_port}/stream?id={item_id}&season={season}&episode={episode}"
     print(f"Fetching stream for {title} S{season}E{episode}...")
     sys.stdout.flush()
     async with session.get(url) as resp:

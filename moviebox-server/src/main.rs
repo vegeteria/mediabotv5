@@ -36,8 +36,10 @@ async fn main() {
         .route("/captions", get(captions))
         .with_state(client);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    println!("API server running on http://0.0.0.0:8000");
+    let port = std::env::var("MB_PORT").unwrap_or_else(|_| "8000".to_string());
+    let bind_addr = format!("0.0.0.0:{}", port);
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
+    println!("API server running on http://{}", bind_addr);
     axum::serve(listener, app).await.unwrap();
 }
 

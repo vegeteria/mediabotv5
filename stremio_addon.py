@@ -11,7 +11,8 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MB_SERVER = os.environ.get("MB_SERVER", "http://localhost:8000")
+mb_port = os.environ.get("MB_PORT", "8000")
+MB_SERVER = os.environ.get("MB_SERVER", f"http://localhost:{mb_port}")
 
 async def fetch_cinemeta(type_, id_):
     async with httpx.AsyncClient() as client:
