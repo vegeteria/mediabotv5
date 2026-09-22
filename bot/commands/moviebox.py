@@ -933,7 +933,7 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
             if cache["type"] == "movie":
                 kb.append([
                     InlineKeyboardButton("📥 Download Movie", callback_data="mbq_best", style=pyrogram.enums.ButtonStyle.SUCCESS),
-                    InlineKeyboardButton("▶️ Stream Movie", callback_data="mbs_best", style=pyrogram.enums.ButtonStyle.PRIMARY)
+                    InlineKeyboardButton("▶️ Stream Movie", callback_data="mbstream_best", style=pyrogram.enums.ButtonStyle.PRIMARY)
                 ])
             else:
                 # Series: We will generate season buttons
@@ -1270,7 +1270,7 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
             if len(selected) == 1:
                 kb.append([
                     InlineKeyboardButton(f"📥 Download Selected (1)", callback_data="mb_ep_selected", style=pyrogram.enums.ButtonStyle.SUCCESS),
-                    InlineKeyboardButton(f"▶️ Stream Selected", callback_data="mbs_ep_selected", style=pyrogram.enums.ButtonStyle.PRIMARY)
+                    InlineKeyboardButton(f"▶️ Stream Selected", callback_data="mbstream_ep_selected", style=pyrogram.enums.ButtonStyle.PRIMARY)
                 ])
             else:
                 kb.append([InlineKeyboardButton(f"📥 Download Selected ({len(selected)})", callback_data="mb_ep_selected", style=pyrogram.enums.ButtonStyle.SUCCESS)])
@@ -1308,7 +1308,7 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
 
 
     # ── quality selection → dub selection ───────────────────────────────
-    elif query.data.startswith("mbs_"):
+    elif query.data.startswith("mbstream_"):
         if not check_concurrency_limit(user_id):
             await query.edit_message_text("❌ You already have an active process. Please wait or use /cancel.")
             return
@@ -1317,7 +1317,7 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
             await query.edit_message_text("❌ Session expired.")
             return
 
-        action_val = query.data.replace("mbs_", "")
+        action_val = query.data.replace("mbstream_", "")
         state = USER_STATES[user_id]
         state["action"] = "stream"
         
