@@ -11,3 +11,4 @@ lxml>=4.9.3
 requests>=2.31.0
 mutagen>=1.47.0
 yt-dlp>=2026.8.19
+aiohttp-cors

@@ -35,6 +35,7 @@ COPY --from=rust-builder /usr/src/moviebox-server/target/release/moviebox-server
 # Copy the bot code
 COPY media_bot.py .
 COPY auto_merger.py .
+COPY stremio_addon.py .
 COPY bot/ bot/
 
 CMD ["python", "media_bot.py"]
