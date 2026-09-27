@@ -301,6 +301,14 @@ async def continue_series_processing(
             series_name = find_fuzzy_series_folder(series_name)
             if not quality:
                 quality = quality_from_parse
+        else:
+            from bot.helpers import parse_episode_filename
+            parsed_ep = parse_episode_filename(archive_path.name)
+            if parsed_ep:
+                series_name, season, _, quality_from_parse = parsed_ep
+                series_name = find_fuzzy_series_folder(series_name)
+                if not quality:
+                    quality = quality_from_parse
 
     if not series_name:
         USER_STATES[user_id] = {
