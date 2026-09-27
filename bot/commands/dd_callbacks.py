@@ -745,7 +745,7 @@ async def process_episode_post(status_msg, user_id, filepath, state=None):
         except Exception:
             pass
             
-        await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Series/{target_series}/{target_season}")
+        await refresh_jellyfin(telegram_msg=final_bot_msg, target_dir=f"Series/{series_name}/{season_folder}")
     else:
         USER_STATES[user_id] = {"step": "wait_ep_manual_series", "filepath": str(filepath)}
         from bot.state import preserve_task_for_user_input
