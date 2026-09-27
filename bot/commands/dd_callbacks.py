@@ -344,11 +344,43 @@ async def handle_dd_callback(client: Client, query: CallbackQuery):
                         core_archive = Path(state["core_archive"])
                         await process_archive_sequentially_loop(core_archive, state["series_name"], query.message, state, user_id=user_id)
                     else:
-                        await update_status_msg(query.message, "🔄 Processing all episodes...")
-                        from bot.organizer import process_extracted_videos, organize_and_upload_extracted
+                        await update_status_msg(query.message, "🔄 Processing episode...")
+                        from bot.organizer import process_extracted_videos
                         extract_dir = Path(state["filepath"])
                         await process_extracted_videos(extract_dir, query.message, state, user_id=user_id)
-                        await organize_and_upload_extracted(extract_dir, state["series_name"], query.message, user_id=user_id, fallback_season=state["season"], quality=state.get("quality"))
+                        for f in extract_dir.iterdir():
+                            if f.is_file():
+                                await process_episode_post(query.message, user_id, f, state=state)
+                        import shutil
+                        shutil.rmtree(str(extract_dir), ignore_errors=True)
+                        
+                        multipart_urls = state.get("multipart_urls", [])
+                        if multipart_urls:
+                            from bot.downloader import AsyncDownloader, ProgressTracker
+                            from bot.config import BASE_SERIES
+                            import uuid
+                            unorganized_dir = BASE_SERIES / ".unorganized"
+                            for i, m_url in enumerate(multipart_urls, 1):
+                                try:
+                                    await update_status_msg(query.message, f"⬇️ **Downloading Independent Episode ({i+1}/{len(multipart_urls)+1})**...")
+                                    tracker = ProgressTracker(query.message, 0, user_id=user_id, user_display=qtask.user_display, title_prefix=f"(Episode {i+1}/{len(multipart_urls)+1})")
+                                    part_path = await AsyncDownloader.download(m_url, unorganized_dir, tracker, user_id=user_id)
+                                    
+                                    new_extract_dir = BASE_SERIES / state["series_name"] / f"extracted_{uuid.uuid4().hex[:8]}"
+                                    new_extract_dir.mkdir(parents=True, exist_ok=True)
+                                    shutil.move(str(part_path), str(new_extract_dir / part_path.name))
+                                    
+                                    await update_status_msg(query.message, f"🔄 Processing Episode {i+1}...")
+                                    await process_extracted_videos(new_extract_dir, query.message, state, user_id=user_id)
+                                    for f in new_extract_dir.iterdir():
+                                        if f.is_file():
+                                            await process_episode_post(query.message, user_id, f, state=state)
+                                            
+                                    shutil.rmtree(str(new_extract_dir), ignore_errors=True)
+                                except Exception as e:
+                                    from bot.config import logger
+                                    logger.error(f"Failed to process episode {i+1} in batch: {e}")
+                                    continue
                 finally:
                     await task_manager.release(client)
                 return
@@ -650,6 +682,8 @@ async def process_episode_post(status_msg, user_id, filepath, state=None):
 
         if not quality and USER_STATES.get(user_id, {}).get("detected_quality"):
             quality = USER_STATES[user_id]["detected_quality"]
+        if not quality and state and state.get("quality"):
+            quality = state.get("quality")
         if not quality:
             from bot.helpers import detect_quality_with_ffprobe
             quality = await detect_quality_with_ffprobe(str(filepath))

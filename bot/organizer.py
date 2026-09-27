@@ -114,15 +114,24 @@ async def process_series_archive(
         await status_msg.edit_text(f"❌ Error: {str(e)}")
 
 
-async def extract_series_archive_only(archive_path: Path, series_name: str, status_msg, user_id, password=None) -> Path:
+async def extract_series_archive_only(archive_path: Path, series_name: str, status_msg, user_id, password=None, extract_dir: Path = None) -> Path:
     import uuid
-    series_name = re.sub(r'[<>:"/\\|?*]', "_", series_name)
-    series_dir = BASE_SERIES / series_name
-    series_dir.mkdir(parents=True, exist_ok=True)
-    extract_dir = series_dir / f"extracted_{uuid.uuid4().hex[:8]}"
-    extract_dir.mkdir(exist_ok=True)
-
+    import shutil
     from bot.state import update_status_msg
+
+    if not extract_dir:
+        series_name = re.sub(r'[<>:"/\\|?*]', "_", series_name)
+        series_dir = BASE_SERIES / series_name
+        series_dir.mkdir(parents=True, exist_ok=True)
+        extract_dir = series_dir / f"extracted_{uuid.uuid4().hex[:8]}"
+        extract_dir.mkdir(exist_ok=True)
+
+    video_exts = [".mkv", ".mp4", ".avi", ".m4v", ".webm", ".ts", ".wmv"]
+    if archive_path.suffix.lower() in video_exts:
+        await update_status_msg(status_msg, "📦 Moving video file to batch directory...")
+        shutil.move(str(archive_path), str(extract_dir / archive_path.name))
+        return extract_dir
+
     await update_status_msg(status_msg, "📦 Extracting archive...")
     extract_cmd = ["7z", "x", "-bsp1", str(archive_path), f"-o{extract_dir}", "-y"]
     if password:
@@ -306,7 +315,7 @@ async def continue_series_processing(
             await status_msg.delete()
         except Exception:
             pass
-        await client.send_message(
+        await status_msg._client.send_message(
             chat_id=status_msg.chat.id,
             text=f"✅ Downloaded to holding area: `{archive_path.name}`\n\n"
                  f"⚠️ **Could not automatically detect series name and season.**\n\n"
@@ -338,7 +347,7 @@ async def continue_series_processing(
             await status_msg.delete()
         except Exception:
             pass
-        await client.send_message(
+        await status_msg._client.send_message(
             chat_id=status_msg.chat.id,
             text=f"✅ Downloaded: `{archive_path.name}`\n\n"
                  f"ℹ️ **Quality tag missing.** Apply quality to all episodes in this archive:",
@@ -396,17 +405,6 @@ async def prompt_series_download_options(
         try:
             if not is_sequential:
                 extract_dir = await extract_series_archive_only(archive_path, series_name, status_msg, user_id, password)
-                
-                if multipart_urls:
-                    from bot.downloader import AsyncDownloader, ProgressTracker
-                    from bot.config import BASE_SERIES
-                    from bot.state import update_status_msg
-                    unorganized_dir = BASE_SERIES / ".unorganized"
-                    for i, m_url in enumerate(multipart_urls, 1):
-                        await update_status_msg(status_msg, f"⬇️ **Downloading Independent Archive ({i}/{len(multipart_urls)})**...")
-                        tracker = ProgressTracker(status_msg, 0, user_id=user_id, user_display=qtask.user_display, title_prefix=f"(Archive {i+1}/{len(multipart_urls)+1})")
-                        part_path = await AsyncDownloader.download(m_url, unorganized_dir, tracker, user_id=user_id)
-                        await extract_series_archive_only(part_path, series_name, status_msg, user_id, password)
             else:
                 # Sequential logic: Peel the onion and extract just the first video
                 from bot.state import update_status_msg
@@ -435,7 +433,7 @@ async def prompt_series_download_options(
         "season": season,
         "password": password,
         "quality": quality,
-        "multipart_urls": multipart_urls if is_sequential else None, # For sequential, keep URLs to download later
+        "multipart_urls": multipart_urls,
         "opt_audio": True,
         "opt_mkvmerge": False,
         "task_id": qtask.id

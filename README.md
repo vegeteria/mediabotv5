@@ -197,7 +197,10 @@ You can also upload a `.txt` file containing a list of URLs (one per line) and a
 ## Changelog
 
 ### v5.1.5 - Text File Batch Downloading
-* **Series Batch Engine**: The `/series` command now supports directly processing `.txt` files containing batches of URLs. You can upload a text file with the caption `/series` (or reply to one) and the bot will safely download it into memory, extract all valid URLs, and seamlessly route them to the multi-part extraction pipeline. Added 5MB upload protections and robust `utf-8` decoding fallback to prevent memory leaks or crashes on invalid file encodings.
+* **Series Batch Engine**: The `/series` command now supports directly processing `.txt` files containing batches of URLs.
+  * **Ask-Once Sequential Processing**: If you upload a text file with `.mkv`/`.mp4` links, the bot will download the first episode, ask for your Audio Track / Web Optimize preferences **only once**, and then process all remaining episodes sequentially using those choices. This uses zero extra disk space!
+  * **Multi-Season Support**: The bot pipes raw episodes through the `/episode` standardizer natively, meaning a `.txt` batch spanning `S01` to `S05` will automatically be parsed, renamed, and seamlessly routed into the correct `Season 1`, `Season 2` folders in your cloud.
+  * Added 5MB upload protections and robust `utf-8` decoding fallback to prevent memory leaks or crashes on invalid file encodings.
 
 ### v5.1.4 - Stremio Proxy Integration & VLC Direct Streaming
 * **VLC Direct Streaming**: Added new "▶️ Stream Movie" and "▶️ Stream Selected" buttons for `/mbmovie` and `/mbseries`.
