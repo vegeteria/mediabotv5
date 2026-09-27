@@ -177,6 +177,9 @@ https://example.com/part2.rar
 https://example.com/part3.rar
 ```
 
+**Batch Download via Text File:**
+You can also upload a `.txt` file containing a list of URLs (one per line) and add the caption `/series`, or reply to an existing `.txt` file with `/series`. The bot will automatically read the URLs and queue them for batch downloading.
+
 **View Live Queue Dashboard:**
 ```text
 /status
@@ -192,6 +195,9 @@ https://example.com/part3.rar
 > The `/throttle` setting applies to all direct-link downloads. Downloads via `mbmovie`/`mbseries` are hardcoded to **5 blocks** for server stability.
 
 ## Changelog
+
+### v5.1.5 - Text File Batch Downloading
+* **Series Batch Engine**: The `/series` command now supports directly processing `.txt` files containing batches of URLs. You can upload a text file with the caption `/series` (or reply to one) and the bot will safely download it into memory, extract all valid URLs, and seamlessly route them to the multi-part extraction pipeline. Added 5MB upload protections and robust `utf-8` decoding fallback to prevent memory leaks or crashes on invalid file encodings.
 
 ### v5.1.4 - Stremio Proxy Integration & VLC Direct Streaming
 * **VLC Direct Streaming**: Added new "▶️ Stream Movie" and "▶️ Stream Selected" buttons for `/mbmovie` and `/mbseries`.

@@ -195,7 +195,68 @@ async def download_series(client: Client, message: Message):
 
     register_user_task(user_id, asyncio.current_task())
 
+    target_message = None
+    if message.reply_to_message and message.reply_to_message.document:
+        target_message = message.reply_to_message
+    elif message.document:
+        target_message = message
+
+    if target_message:
+        doc = target_message.document
+        is_text = False
+        if getattr(doc, "mime_type", None) == "text/plain":
+            is_text = True
+        elif getattr(doc, "file_name", "") and getattr(doc, "file_name", "").endswith(".txt"):
+            is_text = True
+            
+        if is_text:
+            if getattr(doc, "file_size", 0) > 5 * 1024 * 1024:
+                await message.reply_text("❌ Text file is too large (Limit: 5MB).")
+                return
+
+            status_msg = await message.reply_text("📥 Reading text file for URLs...")
+            try:
+                file_io = await client.download_media(target_message, in_memory=True)
+                content = file_io.getvalue().decode('utf-8', errors='ignore')
+                
+                urls = []
+                for line in content.splitlines():
+                    line = line.strip()
+                    if validate_url(line):
+                        urls.append(line)
+                        
+                if not urls:
+                    await status_msg.edit_text("❌ No valid URLs found in the text file.")
+                    return
+                    
+                await status_msg.delete()
+                
+                final_urls = []
+                for u in urls:
+                    try:
+                        from bot.direct_link_generator import direct_link_generator
+                        bypass_url = direct_link_generator(u)
+                        if bypass_url:
+                            final_urls.append(bypass_url[0] if isinstance(bypass_url, tuple) else bypass_url)
+                        else:
+                            final_urls.append(u)
+                    except Exception:
+                        final_urls.append(u)
+                        
+                from bot.commands.multipart_handler import handle_multipart_series
+                await handle_multipart_series(client, message, final_urls, None, user_id)
+                return
+            except Exception as e:
+                await status_msg.edit_text(f"❌ Failed to read text file: {e}")
+                return
+
+    media_target = None
     if message.reply_to_message and (message.reply_to_message.document or message.reply_to_message.video):
+        media_target = message.reply_to_message
+    elif message.document or message.video:
+        media_target = message
+
+    if media_target:
         from bot.downloader import AsyncDownloader
         task_id = __import__("uuid").uuid4().hex[:8]
         from bot.state import GLOBAL_TASKS, GlobalTask
@@ -220,7 +281,7 @@ async def download_series(client: Client, message: Message):
             unorganized_dir = BASE_SERIES / ".unorganized"
             from bot.downloader import ProgressTracker
             tracker = ProgressTracker(status_msg, 0, user_id=user_id, task_id=task_id)
-            filepath = await AsyncDownloader.download_telegram_media(message.reply_to_message, unorganized_dir, tracker, user_id=user_id)
+            filepath = await AsyncDownloader.download_telegram_media(media_target, unorganized_dir, tracker, user_id=user_id)
             
             from bot.state import CALLBACK_STATES
             state = {
