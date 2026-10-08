@@ -356,7 +356,6 @@ async def handle_dd_callback(client: Client, query: CallbackQuery):
                         
                         multipart_urls = state.get("multipart_urls", [])
                         if multipart_urls:
-                            from bot.downloader import AsyncDownloader, ProgressTracker
                             from bot.config import BASE_SERIES
                             import uuid
                             unorganized_dir = BASE_SERIES / ".unorganized"

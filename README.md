@@ -196,6 +196,9 @@ You can also upload a `.txt` file containing a list of URLs (one per line) and a
 
 ## Changelog
 
+### v5.1.6 - Bug Fixes
+* **Direct Download Crash Fix**: Fixed a critical `UnboundLocalError: cannot access local variable 'ProgressTracker'` crash that would silently fail the `/movie` command when probing direct links. The issue was caused by an internal shadow-import overriding the global module scope inside the callback execution block.
+
 ### v5.1.5 - Text File Batch Downloading
 * **Series Batch Engine**: The `/series` command now supports directly processing `.txt` files containing batches of URLs.
   * **Ask-Once Sequential Processing**: If you upload a text file with `.mkv`/`.mp4` links, the bot will download the first episode, ask for your Audio Track / Web Optimize preferences **only once**, and then process all remaining episodes sequentially using those choices. This uses zero extra disk space!
