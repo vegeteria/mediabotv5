@@ -28,185 +28,254 @@ def validate_url(url: str) -> bool:
         return False
 
 
-# ── Jellyfin integration ─────────────────────────────────────────────────────
+# ── Jellyfin & Rclone VFS integration ────────────────────────────────────────
 
-_merger_task = None
-_merger_target_time = 0
-_merger_msgs = []
+_refresh_lock = asyncio.Lock()
+_last_scan_end_time = 0.0
 
-async def _debounced_merger_loop():
-    global _merger_target_time, _merger_msgs
-    import time
-    
-    logger.info("Auto-merger debouncer started.")
-    
-    last_reported_remaining = -1
-    while True:
-        now = time.time()
-        if now >= _merger_target_time:
-            break
-            
-        remaining = int(_merger_target_time - now)
-        
-        report_remaining = ((remaining + 9) // 10) * 10
-        if report_remaining != last_reported_remaining:
-            last_reported_remaining = report_remaining
-            for msg in _merger_msgs:
-                try:
-                    await msg.edit_text(f"⏳ **Rclone is syncing...**\nPreparing media in **{report_remaining} seconds**.", parse_mode=ParseMode.MARKDOWN)
-                except Exception:
-                    pass
-                    
-        await asyncio.sleep(min(2, remaining))
-        
-    # --- ACTIVE POLLING PHASE ---
-    logger.info("Debounce timer finished. Waiting 3 seconds for Jellyfin task scheduler to catch up...")
-    
-    await asyncio.sleep(3)
-    
-    logger.info("Starting Jellyfin API active polling...")
-    for msg in _merger_msgs:
-        try:
-            await msg.edit_text("⏳ **Jellyfin is scanning...**\nWaiting for library scan to officially complete...", parse_mode=ParseMode.MARKDOWN)
-        except Exception:
-            pass
+async def _safe_edit(msg, text: str):
+    """Safely edit a telegram message with markdown, ignoring transient errors."""
+    if not msg:
+        return
+    try:
+        await msg.edit_text(text, parse_mode=ParseMode.MARKDOWN)
+    except Exception as e:
+        logger.debug(f"Could not edit status message: {e}")
 
+async def _refresh_rclone_vfs(target_dir: Optional[str] = None, recursive: str = "true") -> tuple[bool, str]:
+    """Synchronously refreshes Rclone VFS cache, with automatic parent fallback for newly added folders."""
+    from bot.config import RCLONE_BASE_DIR, RCLONE_RC_URL
     import os
-    jf_url = os.getenv("JELLYFIN_URL", "http://localhost:8096").rstrip('/')
-    headers = {
-        'Authorization': f'MediaBrowser Token="{JELLYFIN_API_KEY}", Client="MediaBot", Device="Script", DeviceId="Bot123", Version="5.1.0"'
-    }
     
-    poll_attempts = 0
-    while poll_attempts < 60:
-        try:
-            timeout = aiohttp.ClientTimeout(total=5)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+    rc_url = RCLONE_RC_URL or os.getenv("RCLONE_RC_URL", "http://localhost:5572").rstrip("/")
+    if target_dir:
+        if RCLONE_BASE_DIR:
+            dir_path = f"{RCLONE_BASE_DIR}/{target_dir}".strip("/")
+        else:
+            dir_path = str(target_dir).strip("/")
+    else:
+        dir_path = RCLONE_BASE_DIR or ""
+
+    timeout = aiohttp.ClientTimeout(total=60)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            payload = {
+                "dir": dir_path,
+                "recursive": recursive,
+                "_async": "false"
+            }
+            logger.info(f"Sending VFS refresh to Rclone RC ({rc_url})... dir='{dir_path}', recursive={recursive}")
+            async with session.post(f"{rc_url}/vfs/refresh", json=payload) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    result = data.get("result", {})
+                    # If target directory was brand new, Rclone VFS returns "file does not exist"
+                    has_not_found = any("file does not exist" in str(v).lower() for v in result.values())
+                    if has_not_found and dir_path:
+                        top_category = dir_path.split("/")[0]
+                        logger.warning(
+                            f"Rclone VFS returned 'file does not exist' for '{dir_path}'. "
+                            f"Fallback refreshing top-level category '{top_category}'..."
+                        )
+                        fallback_payload = {
+                            "dir": top_category,
+                            "recursive": "true",
+                            "_async": "false"
+                        }
+                        async with session.post(f"{rc_url}/vfs/refresh", json=fallback_payload) as fb_resp:
+                            if fb_resp.status == 200:
+                                logger.info(f"Top-level category '{top_category}' refreshed successfully in Rclone VFS.")
+                                return True, "Refreshed parent category"
+                            else:
+                                err = await fb_resp.text()
+                                logger.warning(f"Fallback VFS refresh failed ({fb_resp.status}): {err}")
+                                return False, f"Fallback failed: {err}"
+                    logger.info(f"Rclone VFS cache refreshed successfully for '{dir_path}'.")
+                    return True, "Cache updated"
+                else:
+                    err = await resp.text()
+                    logger.warning(f"Rclone RC returned HTTP {resp.status}: {err}")
+                    return False, f"HTTP {resp.status}"
+    except Exception as e:
+        logger.error(f"Could not reach Rclone RC at {rc_url}: {e}")
+        return False, f"Unreachable ({e})"
+
+async def _trigger_jellyfin_scan(status_msg=None, step_prefix: str = "[2/3]") -> tuple[bool, str]:
+    """Triggers Jellyfin library scan and actively monitors ScheduledTasks until completed."""
+    import time
+    from bot.config import JELLYFIN_URL, JELLYFIN_API_KEY
+    import os
+
+    jf_url = JELLYFIN_URL or os.getenv("JELLYFIN_URL", "http://localhost:8096").rstrip("/")
+    api_key = JELLYFIN_API_KEY or os.getenv("JELLYFIN_API_KEY", "")
+
+    if not api_key:
+        logger.warning("JELLYFIN_API_KEY is not configured; skipping Jellyfin library scan.")
+        return False, "API key not set"
+
+    headers = {
+        'Authorization': f'MediaBrowser Token="{api_key}", Client="MediaBot", Device="Script", DeviceId="Bot123", Version="5.1.0"'
+    }
+
+    initial_start = ""
+    timeout = aiohttp.ClientTimeout(total=10)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            # 1. Inspect current task execution time
+            try:
                 async with session.get(f"{jf_url}/ScheduledTasks", headers=headers) as resp:
                     if resp.status == 200:
                         tasks = await resp.json()
-                        scan_task = next((t for t in tasks if t.get("Key") == "RefreshLibrary"), None)
-                        if scan_task and scan_task.get("State") == "Running":
-                            poll_attempts += 1
-                            await asyncio.sleep(5)
-                            continue
-        except Exception as e:
-            logger.warning(f"Failed to poll Jellyfin tasks: {e}")
-        break
-        
-    for msg in _merger_msgs:
-        try:
-            await msg.edit_text("✅ **Jellyfin Scan Complete!**\n🔄 **Executing TV Show Auto-Merger...**", parse_mode=ParseMode.MARKDOWN)
-        except Exception:
-            pass
+                        task = next((t for t in tasks if t.get("Key") == "RefreshLibrary"), None)
+                        if task:
+                            initial_start = task.get("LastExecutionResult", {}).get("StartTimeUtc", "")
+            except Exception as e:
+                logger.debug(f"Could not fetch initial Jellyfin task state: {e}")
 
+            # 2. Trigger scan
+            url = f"{jf_url}/Library/Refresh"
+            logger.info("Invoking Jellyfin global library refresh...")
+            async with session.post(url, headers=headers) as response:
+                if response.status not in (200, 204):
+                    err = await response.text()
+                    logger.warning(f"Jellyfin /Library/Refresh returned status {response.status}: {err}")
+                    return False, f"HTTP {response.status}"
+
+            # 3. Poll ScheduledTasks until scan officially finishes
+            poll_attempts = 0
+            has_started = False
+            last_edit_time = 0.0
+
+            while poll_attempts < 45: # max ~90 seconds
+                await asyncio.sleep(2)
+                poll_attempts += 1
+                try:
+                    async with session.get(f"{jf_url}/ScheduledTasks", headers=headers) as resp:
+                        if resp.status == 200:
+                            tasks = await resp.json()
+                            task = next((t for t in tasks if t.get("Key") == "RefreshLibrary"), None)
+                            if not task:
+                                break
+                            state = task.get("State")
+                            cur_start = task.get("LastExecutionResult", {}).get("StartTimeUtc", "")
+                            progress = task.get("CurrentProgressPercentage")
+
+                            if state == "Running":
+                                has_started = True
+                                now = time.time()
+                                if status_msg and progress is not None and (now - last_edit_time > 3.0):
+                                    last_edit_time = now
+                                    pct = int(progress)
+                                    await _safe_edit(status_msg, f"⏳ **{step_prefix} Scanning Jellyfin media library...** ({pct}%)")
+                            elif state == "Idle":
+                                if has_started or cur_start != initial_start or poll_attempts >= 3:
+                                    logger.info("Jellyfin media library scan completed successfully.")
+                                    return True, "Scan completed"
+                except Exception as e:
+                    logger.warning(f"Polling Jellyfin tasks encountered error: {e}")
+
+            return True, "Scan finished"
+    except Exception as e:
+        logger.error(f"Failed to communicate with Jellyfin: {e}")
+        return False, str(e)
+
+async def _run_tv_auto_merger() -> tuple[bool, str]:
+    """Runs auto_merger.py using current python executable and returns summary."""
+    import sys
     try:
-        logger.info("Spawning auto_merger.py...")
+        logger.info("Spawning auto_merger.py for TV series...")
         process = await asyncio.create_subprocess_exec(
-            "python3", "auto_merger.py",
+            sys.executable, "auto_merger.py",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
         stdout, stderr = await process.communicate()
         if process.returncode == 0:
-            logger.info(f"Auto-merger finished successfully:\n{stdout.decode()}")
-            for msg in _merger_msgs:
-                try:
-                    await msg.edit_text(f"✅ **TV Show Auto-Merger Finished Successfully!**\n\nAll duplicate TV episodes have been grouped.", parse_mode=ParseMode.MARKDOWN)
-                except Exception:
-                    pass
+            out_str = stdout.decode("utf-8", errors="ignore")
+            logger.info(f"Auto-merger finished successfully:\n{out_str}")
+            m = re.search(r"Merged (\d+) total groups", out_str)
+            if m:
+                count = int(m.group(1))
+                if count > 0:
+                    return True, f"Merged {count} duplicate episode group(s)"
+                else:
+                    return True, "All episodes up to date"
+            return True, "Completed"
         else:
-            logger.error(f"Auto-merger failed:\n{stderr.decode()}")
-            for msg in _merger_msgs:
-                try:
-                    await msg.edit_text(f"❌ **Auto-Merger Failed!**\nCheck bot logs.", parse_mode=ParseMode.MARKDOWN)
-                except Exception:
-                    pass
+            err_str = stderr.decode("utf-8", errors="ignore")
+            logger.error(f"Auto-merger failed with code {process.returncode}:\n{err_str}")
+            return False, f"Failed (exit code {process.returncode})"
     except Exception as e:
-        logger.error(f"Could not run auto_merger.py: {e}")
-        
-    # Delete all status messages when completely done!
-    await asyncio.sleep(2)
-    for msg in _merger_msgs:
-        try:
-            await msg.delete()
-        except Exception:
-            pass
-    _merger_msgs.clear()
+        logger.error(f"Could not execute auto_merger.py: {e}")
+        return False, str(e)
 
 async def refresh_jellyfin(telegram_msg=None, target_dir=None, recursive="true"):
-    """Trigger rclone VFS refresh and Jellyfin library scan."""
-    
-    try:
-        logger.info(f"Sending VFS refresh signal to rclone mount... target_dir={target_dir}, recursive={recursive}")
-        timeout = aiohttp.ClientTimeout(total=120) # Increased timeout in case of synchronous refresh
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            from bot.config import RCLONE_BASE_DIR
-            payload = {"recursive": recursive}
-            if target_dir:
-                if RCLONE_BASE_DIR:
-                    payload["dir"] = f"{RCLONE_BASE_DIR}/{target_dir}".strip("/")
-                else:
-                    payload["dir"] = target_dir
-                payload["_async"] = "false" # Synchronously wait for target dir
-            else:
-                if RCLONE_BASE_DIR:
-                    payload["dir"] = RCLONE_BASE_DIR
-                payload["_async"] = "true" # Fallback to async for global refresh
-                
-            import os
-            rclone_rc_url = os.getenv("RCLONE_RC_URL", "http://localhost:5572").rstrip("/")
-            async with session.post(f"{rclone_rc_url}/vfs/refresh", json=payload) as rc_resp:
-                if rc_resp.status == 200:
-                    logger.info("Rclone VFS cache refreshed successfully!")
-                else:
-                    error_text = await rc_resp.text()
-                    logger.warning(f"Rclone RC returned status {rc_resp.status}: {error_text}")
-    except Exception as e:
-        logger.error(f"Could not reach Rclone RC (Is --rc enabled on your host mount?): {e}")
-        logger.info("Rclone RC unreachable. Waiting 65s for natural Google Drive polling before triggering Jellyfin...")
-        if telegram_msg:
-            try:
-                await telegram_msg.edit_text("⏳ **Rclone RC Unreachable**\nWaiting 65s for natural Google Drive polling before pinging Jellyfin...", parse_mode=ParseMode.MARKDOWN)
-            except Exception:
-                pass
-        await asyncio.sleep(65)
-
-    try:
-        timeout = aiohttp.ClientTimeout(total=5)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            from bot.config import JELLYFIN_URL
-            url = f"{JELLYFIN_URL}/Library/Refresh"
-            headers = {
-                'Authorization': f'MediaBrowser Token="{JELLYFIN_API_KEY}", Client="MediaBot", Device="Script", DeviceId="Bot123", Version="5.1.0"'
-            }
-            logger.info("Triggering Jellyfin global library refresh...")
-            async with session.post(url, headers=headers) as response:
-                if response.status in (200, 204):
-                    logger.info("Jellyfin library refresh invoked successfully.")
-                else:
-                    logger.warning(f"Jellyfin refresh returned status: {response.status}")
-    except Exception as e:
-        logger.error(f"Failed to invoke Jellyfin refresh: {e}")
-
-    # --- INJECTED AUTO MERGER TRIGGER ---
-    global _merger_task, _merger_target_time, _merger_msgs
+    """Trigger rclone VFS refresh, Jellyfin library scan, and TV Auto-Merger with in-place status tracking."""
     import time
-    
+    global _last_scan_end_time, _refresh_lock
+
+    start_time = time.time()
+    is_manual = (target_dir is None)
+    target_str = str(target_dir).lower() if target_dir else ""
+    is_tv_or_global = is_manual or target_str.startswith("series") or ("series" in target_str)
+    total_steps = 3 if is_tv_or_global else 2
+
+    # 1. Determine status message handling
+    status_msg = None
     if telegram_msg:
         try:
-            new_msg = await telegram_msg.reply_text("⏳ **Rclone is syncing...**", parse_mode=ParseMode.MARKDOWN)
-            _merger_msgs.append(new_msg)
-        except Exception:
-            pass
-    
-    # We still keep a small 10s debouncer just in case multiple tasks are finishing back to back.
-    # The real wait time is now handled by the Active Poller.
-    _merger_target_time = time.time() + 10
-    
-    if _merger_task is None or _merger_task.done():
-        _merger_task = asyncio.create_task(_debounced_merger_loop())
-    # ------------------------------------
+            msg_text = getattr(telegram_msg, "text", "") or ""
+            if "Triggering media library refresh" in msg_text:
+                status_msg = telegram_msg
+                await _safe_edit(status_msg, f"⏳ **[1/{total_steps}] Syncing filesystem cache (Rclone VFS)...**")
+            else:
+                status_msg = await telegram_msg.reply_text(
+                    f"⏳ **[1/{total_steps}] Syncing filesystem cache (Rclone VFS)...**",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+        except Exception as e:
+            logger.debug(f"Could not initialize status message: {e}")
+
+    # 2. Step 1: Synchronous Rclone VFS Cache Refresh
+    rc_ok, rc_info = await _refresh_rclone_vfs(target_dir=target_dir, recursive=recursive)
+    vfs_done_time = time.time()
+
+    # 3. Step 2 & Step 3: Jellyfin Library Scan & TV Auto-Merger under concurrency lock
+    if status_msg:
+        await _safe_edit(status_msg, f"⏳ **[2/{total_steps}] Scanning Jellyfin media library...**")
+
+    async with _refresh_lock:
+        # Coalesce: if another scan finished after this VFS refresh, library is already up to date
+        if not is_manual and _last_scan_end_time > vfs_done_time:
+            logger.info("Jellyfin library was already scanned after this VFS sync. Skipping redundant scan.")
+            jf_ok, jf_info = True, "Already up to date"
+            merger_summary = "All episodes up to date" if is_tv_or_global else None
+        else:
+            jf_ok, jf_info = await _trigger_jellyfin_scan(status_msg=status_msg, step_prefix=f"[{2}/{total_steps}]")
+            _last_scan_end_time = time.time()
+
+            if is_tv_or_global:
+                if status_msg:
+                    await _safe_edit(status_msg, f"⏳ **[3/{total_steps}] Grouping duplicate TV episodes...**")
+                merger_ok, merger_summary = await _run_tv_auto_merger()
+            else:
+                merger_summary = None
+
+    # 4. Final permanent status message update
+    elapsed = round(time.time() - start_time, 1)
+    lines = [
+        "✅ **Media library refreshed & synced!**",
+        f"⏱️ Completed in **{elapsed}s**"
+    ]
+    if not rc_ok:
+        lines.append(f"⚠️ **Rclone VFS:** {rc_info}")
+    if not jf_ok:
+        lines.append(f"⚠️ **Jellyfin:** {jf_info}")
+    if merger_summary:
+        lines.append(f"🔄 **TV Auto-Merger:** {merger_summary}")
+
+    if status_msg:
+        await _safe_edit(status_msg, "\n".join(lines))
 
 # ── File extension sniffing ──────────────────────────────────────────────────
 

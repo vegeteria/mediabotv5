@@ -1,11 +1,24 @@
+import json
 import os
 import re
-import requests
+import urllib.parse
+import urllib.request
 from collections import defaultdict
-from dotenv import load_dotenv
-
-# Load credentials from .env
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(env_file):
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    if k not in os.environ:
+                        os.environ[k] = v
 JELLYFIN_URL = os.getenv("JELLYFIN_URL", "http://localhost:8096").rstrip('/')
 API_KEY = os.getenv("JELLYFIN_API_KEY")
 
@@ -20,9 +33,12 @@ HEADERS = {
 
 def _get_items(params):
     try:
-        r = requests.get(f"{JELLYFIN_URL}/Items", headers=HEADERS, params=params)
-        r.raise_for_status()
-        return r.json().get('Items', [])
+        query = urllib.parse.urlencode(params)
+        url = f"{JELLYFIN_URL}/Items?{query}"
+        req = urllib.request.Request(url, headers=HEADERS)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            return data.get('Items', [])
     except Exception as e:
         print(f"Error fetching items: {e}")
         return []
@@ -64,11 +80,12 @@ def normalize_path(path):
     return path.replace('\\', '/').strip() if path else ""
 
 def merge_ids(ids):
-    endpoint = f"{JELLYFIN_URL}/Videos/MergeVersions"
+    query = urllib.parse.urlencode({'Ids': ",".join(ids)})
+    endpoint = f"{JELLYFIN_URL}/Videos/MergeVersions?{query}"
     try:
-        r = requests.post(endpoint, headers=HEADERS, params={'Ids': ",".join(ids)})
-        r.raise_for_status()
-        return True
+        req = urllib.request.Request(endpoint, headers=HEADERS, data=b"", method="POST")
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.status in (200, 204)
     except Exception as e:
         print(f"Error merging {ids}: {e}")
         return False

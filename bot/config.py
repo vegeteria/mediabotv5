@@ -50,6 +50,7 @@ PROGRESS_UPDATE_DELAY = float(os.getenv("PROGRESS_UPDATE_DELAY", "1.0"))
 # ── Rclone Mount (For Fuzzy Detection) ───────────────────────────────────────
 RCLONE_MOUNT_DIR = os.getenv("RCLONE_MOUNT_DIR", "/mnt/gdrive")
 RCLONE_BASE_DIR = os.getenv("RCLONE_BASE_DIR", "").strip()
+RCLONE_RC_URL = os.getenv("RCLONE_RC_URL", "http://localhost:5572").rstrip("/")
 
 # Toggle to allow or block duplicate downloads (same name + same quality)
 IS_DUPLICATE_ALLOWED = os.getenv("IS_DUPLICATE_ALLOWED", "False").lower() in ("true", "1", "yes")
