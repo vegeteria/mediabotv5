@@ -344,41 +344,51 @@ async def handle_dd_callback(client: Client, query: CallbackQuery):
                         core_archive = Path(state["core_archive"])
                         await process_archive_sequentially_loop(core_archive, state["series_name"], query.message, state, user_id=user_id)
                     else:
-                        await update_status_msg(query.message, "🔄 Processing episode...")
-                        from bot.organizer import process_extracted_videos
+                        await update_status_msg(query.message, "🔄 Processing series...")
+                        from bot.organizer import process_extracted_videos, organize_and_upload_extracted
                         extract_dir = Path(state["filepath"])
-                        await process_extracted_videos(extract_dir, query.message, state, user_id=user_id)
-                        for f in extract_dir.iterdir():
-                            if f.is_file():
-                                await process_episode_post(query.message, user_id, f, state=state)
-                        import shutil
-                        shutil.rmtree(str(extract_dir), ignore_errors=True)
+                        if state.get("opt_audio") or state.get("opt_mkvmerge"):
+                            await process_extracted_videos(extract_dir, query.message, state, user_id=user_id)
+                        await organize_and_upload_extracted(
+                            extract_dir,
+                            state["series_name"],
+                            query.message,
+                            user_id=user_id,
+                            fallback_season=state.get("season"),
+                            quality=state.get("quality")
+                        )
                         
                         multipart_urls = state.get("multipart_urls", [])
                         if multipart_urls:
                             from bot.config import BASE_SERIES
-                            import uuid
+                            from bot.organizer import extract_series_archive_only
                             unorganized_dir = BASE_SERIES / ".unorganized"
                             for i, m_url in enumerate(multipart_urls, 1):
                                 try:
-                                    await update_status_msg(query.message, f"⬇️ **Downloading Independent Episode ({i+1}/{len(multipart_urls)+1})**...")
-                                    tracker = ProgressTracker(query.message, 0, user_id=user_id, user_display=qtask.user_display, title_prefix=f"(Episode {i+1}/{len(multipart_urls)+1})")
+                                    await update_status_msg(query.message, f"⬇️ **Downloading Independent Archive ({i+1}/{len(multipart_urls)+1})**...")
+                                    tracker = ProgressTracker(query.message, 0, user_id=user_id, user_display=qtask.user_display, title_prefix=f"(Archive {i+1}/{len(multipart_urls)+1})")
                                     part_path = await AsyncDownloader.download(m_url, unorganized_dir, tracker, user_id=user_id)
                                     
-                                    new_extract_dir = BASE_SERIES / state["series_name"] / f"extracted_{uuid.uuid4().hex[:8]}"
-                                    new_extract_dir.mkdir(parents=True, exist_ok=True)
-                                    shutil.move(str(part_path), str(new_extract_dir / part_path.name))
+                                    new_extract_dir = await extract_series_archive_only(
+                                        part_path, state["series_name"], query.message, user_id=user_id, password=state.get("password")
+                                    )
                                     
-                                    await update_status_msg(query.message, f"🔄 Processing Episode {i+1}...")
-                                    await process_extracted_videos(new_extract_dir, query.message, state, user_id=user_id)
-                                    for f in new_extract_dir.iterdir():
-                                        if f.is_file():
-                                            await process_episode_post(query.message, user_id, f, state=state)
-                                            
-                                    shutil.rmtree(str(new_extract_dir), ignore_errors=True)
+                                    await update_status_msg(query.message, f"🔄 Processing Archive {i+1}...")
+                                    if state.get("opt_audio") or state.get("opt_mkvmerge"):
+                                        await process_extracted_videos(new_extract_dir, query.message, state, user_id=user_id)
+                                    
+                                    await organize_and_upload_extracted(
+                                        new_extract_dir,
+                                        state["series_name"],
+                                        query.message,
+                                        user_id=user_id,
+                                        fallback_season=state.get("season"),
+                                        quality=state.get("quality"),
+                                        silent=True
+                                    )
                                 except Exception as e:
                                     from bot.config import logger
-                                    logger.error(f"Failed to process episode {i+1} in batch: {e}")
+                                    logger.error(f"Failed to process archive {i+1} in batch: {e}")
                                     continue
                 finally:
                     await task_manager.release(client)
@@ -609,16 +619,19 @@ async def process_movie_post(status_msg, user_id, filepath, state=None):
                 [InlineKeyboardButton("4k", callback_data="mvq_4k", style=pyrogram.enums.ButtonStyle.PRIMARY),
                  InlineKeyboardButton("Skip / None", callback_data="mvq_skip", style=pyrogram.enums.ButtonStyle.DANGER)]
             ]
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
-            await status_msg.reply_text(
+            text = (
                 f"✅ Downloaded: `{filepath.name}`\n\n"
-                     f"ℹ️ **Quality tag missing.** Please select the movie quality:",
-                reply_markup=InlineKeyboardMarkup(kb),
-                parse_mode=ParseMode.MARKDOWN,
+                f"ℹ️ **Quality tag missing.** Please select the movie quality:"
             )
+            try:
+                await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                await status_msg._client.send_message(
+                    chat_id=status_msg.chat.id,
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(kb),
+                    parse_mode=ParseMode.MARKDOWN,
+                )
             return
 
         ext = get_file_extension(filepath)
@@ -655,17 +668,19 @@ async def process_movie_post(status_msg, user_id, filepath, state=None):
         USER_STATES[user_id] = {"step": "wait_movie_name", "filepath": str(filepath), "task_id": state.get("task_id") if state else None}
         from bot.state import preserve_task_for_user_input
         preserve_task_for_user_input(USER_STATES[user_id], "⏸️ **Waiting for User Input**\nPlease enter movie name in Telegram.")
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-        await client.send_message(
-            chat_id=status_msg.chat.id,
-            text=f"✅ Downloaded to holding area: `{filepath.name}`\n\n"
-                 f"⚠️ **The file name doesn't look like a proper movie name.**\n\n"
-                 f"Please enter the **Movie Name** (it will be renamed):",
-            parse_mode=ParseMode.MARKDOWN,
+        text = (
+            f"✅ Downloaded to holding area: `{filepath.name}`\n\n"
+            f"⚠️ **The file name doesn't look like a proper movie name.**\n\n"
+            f"Please enter the **Movie Name** (it will be renamed):"
         )
+        try:
+            await status_msg.edit_text(text, parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            await status_msg._client.send_message(
+                chat_id=status_msg.chat.id,
+                text=text,
+                parse_mode=ParseMode.MARKDOWN,
+            )
 
 async def process_episode_post(status_msg, user_id, filepath, state=None):
     if not filepath.exists():
@@ -704,16 +719,19 @@ async def process_episode_post(status_msg, user_id, filepath, state=None):
                 [InlineKeyboardButton("4k", callback_data="epq_4k", style=pyrogram.enums.ButtonStyle.PRIMARY),
                  InlineKeyboardButton("Skip / None", callback_data="epq_skip", style=pyrogram.enums.ButtonStyle.DANGER)]
             ]
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
-            await status_msg.reply_text(
+            text = (
                 f"✅ Downloaded: `{filepath.name}`\n\n"
-                     f"ℹ️ **Quality tag missing.** Please select the video quality:",
-                reply_markup=InlineKeyboardMarkup(kb),
-                parse_mode=ParseMode.MARKDOWN,
+                f"ℹ️ **Quality tag missing.** Please select the video quality:"
             )
+            try:
+                await status_msg.edit_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode=ParseMode.MARKDOWN)
+            except Exception:
+                await status_msg._client.send_message(
+                    chat_id=status_msg.chat.id,
+                    text=text,
+                    reply_markup=InlineKeyboardMarkup(kb),
+                    parse_mode=ParseMode.MARKDOWN,
+                )
             return
 
         series_name = find_fuzzy_series_folder(series_name)
@@ -749,17 +767,19 @@ async def process_episode_post(status_msg, user_id, filepath, state=None):
         USER_STATES[user_id] = {"step": "wait_ep_manual_series", "filepath": str(filepath)}
         from bot.state import preserve_task_for_user_input
         preserve_task_for_user_input(USER_STATES[user_id], "⏸️ **Waiting for User Input**\nPlease enter series name in Telegram.")
-        try:
-            await status_msg.delete()
-        except Exception:
-            pass
-        await client.send_message(
-            chat_id=status_msg.chat.id,
-            text=f"✅ Downloaded to holding area: `{filepath.name}`\n\n"
-                 f"⚠️ **Could not automatically parse the episode details.**\n\n"
-                 f"Please enter the **Series Name** (Season and Episode will be asked next):",
-            parse_mode=ParseMode.MARKDOWN,
+        text = (
+            f"✅ Downloaded to holding area: `{filepath.name}`\n\n"
+            f"⚠️ **Could not automatically parse the episode details.**\n\n"
+            f"Please enter the **Series Name** (Season and Episode will be asked next):"
         )
+        try:
+            await status_msg.edit_text(text, parse_mode=ParseMode.MARKDOWN)
+        except Exception:
+            await status_msg._client.send_message(
+                chat_id=status_msg.chat.id,
+                text=text,
+                parse_mode=ParseMode.MARKDOWN,
+            )
 
 async def handle_direct_link_probe(message, user_id, url, dl_type):
     from bot.state import USER_STATES
@@ -974,18 +994,27 @@ async def prompt_audio_tracks_for_extracted(extract_dir, state, status_msg):
             state["audio_tracks"] = audio_tracks
             state["selected_tracks"] = []
             state["step"] = "wait_audio_tracks"
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
             from bot.config import get_base_url
             dashboard_link = f"{get_base_url()}/dashboard"
-            await status_msg.reply_text(
-                f"🎧 Select audio tracks to convert to Stereo (based on `{first_video.name}`):\n\n🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{state.get('task_id')}`",
-                reply_markup=get_track_keyboard(state),
-                parse_mode=ParseMode.MARKDOWN,
-                link_preview_options=LinkPreviewOptions(is_disabled=True)
+            text = (
+                f"🎧 Select audio tracks to convert to Stereo (based on `{first_video.name}`):\n\n"
+                f"🌐 [Open Dashboard]({dashboard_link}) | Task ID: `{state.get('task_id')}`"
             )
+            try:
+                await status_msg.edit_text(
+                    text,
+                    reply_markup=get_track_keyboard(state),
+                    parse_mode=ParseMode.MARKDOWN,
+                    link_preview_options=LinkPreviewOptions(is_disabled=True)
+                )
+            except Exception:
+                await status_msg._client.send_message(
+                    chat_id=status_msg.chat.id,
+                    text=text,
+                    reply_markup=get_track_keyboard(state),
+                    parse_mode=ParseMode.MARKDOWN,
+                    link_preview_options=LinkPreviewOptions(is_disabled=True)
+                )
             return True
         else:
             await status_msg.edit_text("❌ No audio tracks found in the first video.")

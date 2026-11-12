@@ -172,7 +172,7 @@ async def perform_autorclone(local_path: Path, remote_folder: str, message, user
     except Exception as e:
         if not silent:
             await message.edit_text(f"❌ Rclone upload failed: {e}")
-        return ""
+        return "", None
         
     index_url = os.getenv("INDEX_URL", "")
     cloud_link_base = os.getenv("CLOUD_LINK_BASE", "")

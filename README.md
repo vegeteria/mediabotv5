@@ -196,6 +196,14 @@ You can also upload a `.txt` file containing a list of URLs (one per line) and a
 
 ## Changelog
 
+### v5.1.7 - Bug Fixes
+* **Series Season Input & Archive Extraction Fixes**: Fixed a critical issue where providing a season number for unnamed series archives would silently stall the bot.
+  * **Archive ffprobe Guard**: Prevented `detect_quality_with_ffprobe` from executing against non-video archive formats (`.zip`, `.rar`, `.7z`), which previously caused unhandled stalls.
+  * **MessageIdInvalid & Reply Fixes**: Replaced deleted-message `reply_text` calls in audio and quality prompts with in-place edits and safe `_client.send_message` fallbacks.
+  * **Series Extracted Pipeline**: Fixed `handle_dd_callback` to route series extractions through `organize_and_upload_extracted` instead of misrouting into `process_episode_post`.
+  * **Scope & Unpack Fixes**: Resolved undefined `client` scope crashes and tuple unpack return mismatch on upload failures.
+  * **Cancel State Clearing**: `/cancel` now resets pending conversational user states (`USER_STATES`).
+
 ### v5.1.6 - Bug Fixes
 * **Direct Download Crash Fix**: Fixed a critical `UnboundLocalError: cannot access local variable 'ProgressTracker'` crash that would silently fail the `/movie` command when probing direct links. The issue was caused by an internal shadow-import overriding the global module scope inside the callback execution block.
 

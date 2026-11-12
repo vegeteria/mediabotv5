@@ -179,65 +179,89 @@ async def handle_message_input(client: Client, message: Message):
             password = state.get("password")
             task_id = state.get("task_id")
             multipart_urls = state.get("multipart_urls")
-            if task_id:
-                from bot.state import GLOBAL_TASKS
-                if task_id in GLOBAL_TASKS:
-                    GLOBAL_TASKS[task_id].asyncio_task = asyncio.current_task()
-            del USER_STATES[user_id]
 
-            if not filepath.exists():
-                await message.reply_text("❌ The downloaded archive was lost or deleted.")
-                return
+            try:
+                if task_id:
+                    from bot.state import GLOBAL_TASKS
+                    if task_id in GLOBAL_TASKS:
+                        GLOBAL_TASKS[task_id].asyncio_task = asyncio.current_task()
+                del USER_STATES[user_id]
 
-            series_name = find_fuzzy_series_folder(series_name)
-            
-            from bot.helpers import extract_quality
-            quality = extract_quality(filepath.name)
-            if not quality:
-                from bot.helpers import detect_quality_with_ffprobe
-                quality = await detect_quality_with_ffprobe(str(filepath))
+                if not filepath.exists():
+                    await message.reply_text("❌ The downloaded archive was lost or deleted.")
+                    return
 
-            if not quality:
+                series_name = find_fuzzy_series_folder(series_name)
+                
+                from bot.helpers import extract_quality
+                quality = extract_quality(filepath.name)
+                if not quality:
+                    # Only run ffprobe on actual video files, NOT on archives.
+                    # ffprobe can hang indefinitely trying to scan a multi-GB
+                    # ZIP/RAR/7Z looking for media streams.
+                    video_exts = {".mkv", ".mp4", ".avi", ".m4v", ".webm", ".ts", ".wmv"}
+                    if filepath.suffix.lower() in video_exts:
+                        from bot.helpers import detect_quality_with_ffprobe
+                        quality = await detect_quality_with_ffprobe(str(filepath))
+
+                if not quality:
+                    USER_STATES[user_id] = {
+                        "step": "wait_sr_quality",
+                        "filepath": str(filepath),
+                        "series_name": series_name,
+                        "season": season,
+                        "password": password,
+                        "task_id": task_id,
+                        "multipart_urls": multipart_urls
+                    }
+                    from bot.state import preserve_task_for_user_input
+                    preserve_task_for_user_input(USER_STATES[user_id], "⏸️ **Waiting for User Input**\nPlease select series quality in Telegram.")
+                    kb = [
+                        [InlineKeyboardButton("480p", callback_data="srq_480p"),
+                         InlineKeyboardButton("720p", callback_data="srq_720p"),
+                         InlineKeyboardButton("1080p", callback_data="srq_1080p")],
+                        [InlineKeyboardButton("4k", callback_data="srq_4k"),
+                         InlineKeyboardButton("Skip / None", callback_data="srq_skip")]
+                    ]
+                    await message.reply_text(
+                        f"✅ Downloaded: `{filepath.name}`\n\n"
+                        f"ℹ️ **Quality tag missing.** Apply quality to all episodes in this archive:",
+                        reply_markup=InlineKeyboardMarkup(kb),
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    return
+
+                status_msg = await message.reply_text(
+                    f"📁 Initializing processing for `{series_name}`...",
+                    parse_mode=ParseMode.MARKDOWN,
+                )
+                from bot.state import update_status_msg
+                await update_status_msg(status_msg, f"📁 Initializing processing for `{series_name}`...")
+
+                register_user_task(user_id, asyncio.current_task())
+                
+
+                from bot.organizer import prompt_series_download_options
+                await prompt_series_download_options(
+                    filepath, series_name, season, quality, password, status_msg, user_id, multipart_urls=multipart_urls
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger("mediabot").exception("Error processing series season input")
+                # Restore state so the user can retry
                 USER_STATES[user_id] = {
-                    "step": "wait_sr_quality",
+                    "step": "wait_series_season",
                     "filepath": str(filepath),
                     "series_name": series_name,
-                    "season": season,
                     "password": password,
                     "task_id": task_id,
-                    "multipart_urls": multipart_urls
+                    "multipart_urls": multipart_urls,
                 }
-                from bot.state import preserve_task_for_user_input
-                preserve_task_for_user_input(USER_STATES[user_id], "⏸️ **Waiting for User Input**\nPlease select series quality in Telegram.")
-                kb = [
-                    [InlineKeyboardButton("480p", callback_data="srq_480p"),
-                     InlineKeyboardButton("720p", callback_data="srq_720p"),
-                     InlineKeyboardButton("1080p", callback_data="srq_1080p")],
-                    [InlineKeyboardButton("4k", callback_data="srq_4k"),
-                     InlineKeyboardButton("Skip / None", callback_data="srq_skip")]
-                ]
                 await message.reply_text(
-                    f"✅ Downloaded: `{filepath.name}`\n\n"
-                    f"ℹ️ **Quality tag missing.** Apply quality to all episodes in this archive:",
-                    reply_markup=InlineKeyboardMarkup(kb),
-                    parse_mode=ParseMode.MARKDOWN
+                    f"❌ An error occurred: `{e}`\n\n"
+                    f"Please try entering the **Season number** again (e.g. `1` or `S01`):",
+                    parse_mode=ParseMode.MARKDOWN,
                 )
-                return
-
-            status_msg = await message.reply_text(
-                f"📁 Initializing processing for `{series_name}`...",
-                parse_mode=ParseMode.MARKDOWN,
-            )
-            from bot.state import update_status_msg
-            await update_status_msg(status_msg, f"📁 Initializing processing for `{series_name}`...")
-
-            register_user_task(user_id, asyncio.current_task())
-            
-
-            from bot.organizer import prompt_series_download_options
-            await prompt_series_download_options(
-                filepath, series_name, season, quality, password, status_msg, user_id, multipart_urls=multipart_urls
-            )
         else:
             await message.reply_text(
                 "❌ Could not parse season. Please try again (e.g. `1` or `S01`)",

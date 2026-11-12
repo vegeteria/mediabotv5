@@ -14,7 +14,7 @@ from pyrogram.types import Message
 from bot.auth import auth_manager, require_auth
 from bot.config import OWNER_ID, logger
 from bot.deeplink import resolve_deep_link, VALID_PREFIXES
-from bot.state import USER_TASKS
+from bot.state import USER_TASKS, USER_STATES
 from bot.user_settings import user_settings
 
 
@@ -166,15 +166,18 @@ async def cancel_process(client: Client, message: Message):
     user_id = message.from_user.id
     
     if len(message.command) < 2:
+        canceled_any = False
+        if user_id in USER_STATES:
+            del USER_STATES[user_id]
+            canceled_any = True
         if user_id in USER_TASKS:
-            canceled_any = False
             for t in USER_TASKS[user_id]:
                 if not t.done():
                     t.cancel()
                     canceled_any = True
-            if canceled_any:
-                await message.reply_text("🚫 Cancelling your active process(es)...")
-                return
+        if canceled_any:
+            await message.reply_text("🚫 Cancelled active process / pending input.")
+            return
         await message.reply_text("ℹ️ You have no active processes to cancel.")
         return
 
